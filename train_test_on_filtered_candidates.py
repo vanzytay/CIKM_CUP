@@ -1,20 +1,34 @@
+from __future__ import division
 from collections import defaultdict
 from myScripts import *
+from ordered_object import *
 import string
 import json
 import tqdm
-
+from scipy import spatial
 import numpy as np
+from gensim.models.doc2vec import *
+from gensim.models import Doc2Vec
+import math
+import xgboost as xgb
+import argparse
+# Set up args parser
+parser = argparse.ArgumentParser()
+parser.add_argument("-m", "--mode", type=str,
+                    help="the main functionality")
+args = parser.parse_args()
+
+feature_index = None
 
 def normalize_click(a):
 	return np.true_divide(a,np.sum(a)) if np.sum(a)!=0 else 0
 
-
-user_features = dictFromFileUnicodeNormal('user_features.json.gz')
+user_features = dictFromFileUnicodeNormal('features/user_features.json.gz')
 all_users = set(user_features.keys())
 timer = ProgressBar(title="Normalizing click")
 for uid in all_users:
 	timer.tick()
+	# print(user_features[uid])
 	user_features[uid]['click_count_day_time'] = np.array(user_features[uid]['click_count_day_time'])
 	user_features[uid]['click_count_time'] = np.array(user_features[uid]['click_count_time'])
 	user_features[uid]['click_count_day_time_normalized'] = normalize_click(user_features[uid]['click_count_day_time'])
@@ -24,8 +38,6 @@ for uid in all_users:
 def click_distribution_similarity(dt1, dt2):
 	return np.linalg.norm(dt1-dt2)
 
-
-import math
 MAX_SIM = 1000000000
 def click_distribution_similarity_KL(dt1, dt2):
 	'''
@@ -42,33 +54,8 @@ def click_distribution_similarity_KL(dt1, dt2):
 	return min(MAX_SIM,1/sum) if sum!=0 else MAX_SIM 
 
 
-from gensim.models.doc2vec import *
-from gensim.models import Doc2Vec
-doc2vec_model = Doc2Vec.load('user-url.d.400.w.8.minf.1.filtered-urls.5trains.doc2vec')
-
-# timer = ProgressBar(title="Reading facts.json")
-# user_facts = {}
-# with open('facts.json','r') as f:
-# 	for line in f:
-# 		timer.tick()
-# 		js = json.loads(line.strip())
-
-# 		# for each userID
-# 		uid = js['uid']
-# 		facts = []
-# 		for fact in js['facts']:
-# 			fid = fact['fid']
-# 			ts = fact['ts']
-# 			if ts>9999999999999:
-# 				ts = ts/1000
-# 			ts = ts/1000	
-# 			facts.append((fid, ts))
-
-# 		if len(facts)==0:
-# 			continue
-
-# 		# facts = sorted(facts, key=lambda x: x[1])
-# 		user_facts[uid] = facts
+doc2vec_model = Doc2Vec.load('models/user-url.d.400.w.8.minf.1.filtered-urls.5trains.doc2vec')
+word_model = Doc2Vec.load('models/mdl_word.d2v')
 
 def get_time_overalap(u1,u2,interval, thrs):
 	t1 = [e[1] for e in user_facts[u1]]
@@ -92,34 +79,50 @@ def get_time_overalap(u1,u2,interval, thrs):
 	return [c[thr] for thr in thrs]
 
 
-from scipy import spatial
+
 def extract_feature_for_pair_users(uid1, uid2):
 	# if random.randint(1, 2)==2:
 	# 	tmp = uid1
 	# 	uid1 = uid2
 	# 	uid2 = uid1
 
+	'''
+	I added feature columns. But not sure if this way will slow it down
+	'''
+
 	global user_features
+	global feature_index 
+	feature_columns = []
+
 	features = []
 	f1 = user_features[uid1]
 	f2 = user_features[uid2]
 
+	# -----------Click Count Day Time---------------------# 
+	click_count_day_time = f1['click_count_day_time'].tolist() + f2['click_count_day_time'].tolist()
+	features += click_count_day_time
 	
-	features+=f1['click_count_day_time'].tolist()
-	features+=f2['click_count_day_time'].tolist()
-	features+=f1['click_count_time'].tolist()
-	features+=f2['click_count_time'].tolist()
+	# -----------Click Count Time---------------------# 
+	click_count_time = f1['click_count_time'].tolist() + f2['click_count_time'].tolist()
+	features+=click_count_time
 
-	features+=np.absolute((f1['click_count_day_time'] - f2['click_count_day_time'])).tolist()
-	features+=np.absolute((f1['click_count_time'] - f2['click_count_time'])).tolist()
+	# ------------DIFF click count day time-----------#
+	diff_click_count_day_time = np.absolute((f1['click_count_day_time'] - f2['click_count_day_time'])).tolist()
+	features += diff_click_count_day_time
+
+	# ------------DIFF click count time-----------#
+	diff_click_count_time = np.absolute((f1['click_count_time'] - f2['click_count_time'])).tolist()
+	features+=diff_click_count_time
 
 	#not really help, reduce recall abit
-	features+=f1['click_count_time_normalized'].tolist()
-	features+=f2['click_count_time_normalized'].tolist()
+	#-------------------Click_Count_Time_Normalized---#
+	click_count_time_normalized = f1['click_count_time_normalized'].tolist() + f2['click_count_time_normalized'].tolist()
+	features += click_count_time_normalized
 
 	#not really help, reduce recall abit
-	features+=f1['click_count_day_time_normalized'].tolist()
-	features+=f2['click_count_day_time_normalized'].tolist()
+	click_count_day_time_normalized = f1['click_count_day_time_normalized'].tolist() + f2['click_count_day_time_normalized'].tolist()
+	features+= click_count_day_time_normalized
+
 	
 	# remove=> increase P but reduce R abit, f1 increaes abit
 	# features.append(click_distribution_similarity(cc_dt_n1, cc_dt_n2))
@@ -134,9 +137,11 @@ def extract_feature_for_pair_users(uid1, uid2):
 	# features.append(click_distribution_similarity_KL(cc_dt_n1, cc_dt_n2))
 	# features.append(click_distribution_similarity_KL(cc_t_n1, cc_t_n2))
 
+	order_objs_lens = []
 	for obj in order_objs:
-		features+=obj.get_orders_infor(uid1,uid2)
-
+		tmp_f = obj.get_orders_infor(uid1,uid2)
+		features+= tmp_f
+		order_objs_lens.append(len(tmp_f))
 	try:
 		v1 = doc2vec_model.docvecs[uid1]
 		v2 = doc2vec_model.docvecs[uid2]
@@ -144,103 +149,44 @@ def extract_feature_for_pair_users(uid1, uid2):
 	except:
 		cos = -1
 		pass
+	# Try adding entire vectors
 	# features+=v1.tolist()
 	# features+=v2.tolist()
 	features.append(cos)
 
 
+	try:
+		# TY: My word_level model uses USER_ + ID as label id
+		v1 = word_model.docvecs['USER_'+str(uid1)]
+		v2 = word_model.docvecs['USER_'+str(uid2)]
+		cos = 1 - spatial.distance.cosine(v1, v2)
+	except:
+		cos = -1
+		pass
+
+	features.append(cos)
+
+	if(feature_index is None):
+		# This should be done once only! 
+		print("Creating Feature Index...")
+		feature_columns+=['click_count_day_time_'+str(i) for i in range(len(click_count_day_time))]
+		feature_columns+=['click_count_time_'+str(i) for i in range(len(click_count_time))]
+		feature_columns+=['diff_click_count_day_time_'+str(i) for i in range(len(diff_click_count_day_time))]
+		feature_columns+=['diff_click_count_time_'+str(i) for i in range(len(diff_click_count_time))]
+		feature_columns+=['click_count_time_normalized_'+str(i) for i in range(len(click_count_time_normalized))]
+		feature_columns+=['click_count_day_time_normalized_'+str(i) for i in range(len(click_count_day_time_normalized))]
+		for oo in order_objs_lens:
+			feature_columns+=['order_objs_'+str(i) for i in range(oo)]
+		feature_columns+=['doc2vec_dist']
+		feature_columns+=['word_model_dist']
+		# This should be equal!
+		print("Number of feature columns %d",len(feature_columns))
+		print("Total features: %d",len(features))
+		feature_index = feature_columns
+
 	# features+=get_time_overalap(uid1,uid2,60,[1,5,10,30])
+	return features 
 
-
-	return features
-
-
-class OrderClass:
-	def __init__(self, nn_pairs):
-		self.orders = {}
-		self.scores = {}
-		self.extract_orders(nn_pairs)
-		self.extract_scores(nn_pairs)
-
-	def extract_orders(self, nn_pairs):
-		self.orders = {}
-		orders_keys = set()
-		for p in nn_pairs:
-			if p[0] not in orders_keys:
-				orders_keys.add(p[0])
-				self.orders[p[0]] = {}
-			self.orders[p[0]][p[1]] = p[3]
-
-	def extract_scores(self, nn_pairs):
-		ps = set()
-		score_keys = set()
-		for p in nn_pairs:
-			u,v = min(p[0],p[1]), max(p[0],p[1])
-			if u not in score_keys:
-				self.scores[u] =  {}
-				score_keys.add(u)
-			self.scores[u][v] =  p[2]
-
-
-	def get_orders_infor(self,u,v):
-		try:
-			if u in self.orders[v].keys():
-				order2 = self.orders[u][v]
-			else:
-				order2 = 101
-		except:
-			order2 = 101
-
-		try:
-			if v in self.orders[u].keys():
-				order1 = self.orders[u][v]
-			else:
-				order1 = 101
-		except:
-			order1 = 101
-		
-		uu,vv = min(u,v), max(u,v)
-		
-		try:
-			score = self.scores[uu][vv]
-		except:
-			score = 3
-
-		return [order1,order2, score]#, int (order1!=101 and order2!=101), int (score>0), int (order1<=15 and order2<=15)]
-
-
-def filter_nn_pairs(nn_pairs):
-	'''
-	Remove duplication of pair u,v and v,u
-	'''
-	candidates = []
-	s = set()
-	for p in nn_pairs:
-		uid1, uid2 = min(p[0],p[1]), max(p[0],p[1])
-		if (uid1,uid2) not in s:
-			candidates.append((min(p[0],p[1]), max(p[0],p[1])))
-			s.add((uid1, uid2))
-	return candidates
-
-def filter_order_list(pairs, topk):
-	print ('filter top_{}'.format(topk))
-	order={}
-	order_ks = set()
-	for p in pairs:
-		u = p[0]
-		if u in order_ks:
-			order[u].append(p)
-		else:
-			order_ks.add(u)
-			order[u] = [p]
-
-	res=[]
-	for u in order_ks:
-		order[u] =  sorted(order[u], key=lambda x: x[2])
-		order[u] = order[u][:topk]
-		res += order[u]
-	
-	return sorted(res, key=lambda x: x[2])
 
 # models = ['candidate_pairs.baseline.nn.15.train-100k.with-orders.strict.json.gz', 
 # 'candidate_pairs.nn.15.train-100k.doc2vec.json.gz',
@@ -248,12 +194,11 @@ def filter_order_list(pairs, topk):
 # 'candidate_pairs.baseline.nn.15.train-100k.with-orders.tf-binary.strict.json.gz'
 # ]
 
-models=['candidates/candidate_pairs.baseline.nn.100.train-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
-]#'candidates/candidate_pairs.nn.100.train-100k.word2vec.json.gz']
+models=['candidates/candidate_pairs.baseline.nn.100.train-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
+#'candidates/candidate_pairs.nn.100.train-100k.word2vec.json.gz']
 
 nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in models]
 order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
-
 
 nn_pairs= []
 for ps in nn_pairs_lst:
@@ -269,7 +214,6 @@ with open('train_100k.csv','r') as f:
 		timer.tick()
 		uid1, uid2 = line.strip().split(',')
 		golden_edges.add((min(uid1, uid2),max(uid1, uid2)))
-
 
 TRAIN_SIZE = int(len(golden_edges)) #!!!
 TEST_SIZE = 80000
@@ -291,10 +235,10 @@ while len(sample_pairs_train)<2.5*positive_count and i<len(nn_pairs): #3.5-5 for
 	if (min(nn_pairs[i][0],nn_pairs[i][1]), max(nn_pairs[i][0],nn_pairs[i][1])) not in golden_edges:
 		sample_pairs_train.append(nn_pairs[i])
 	i+=1
+
 random.shuffle(sample_pairs_train)
 
 del nn_pairs
-
 
 def get_features_for_samples(sample_pairs):
 	samples = []
@@ -303,8 +247,6 @@ def get_features_for_samples(sample_pairs):
 		uid1,uid2 = pair[0], pair[1]
 		samples.append([uid1,uid2,int((min(uid1,uid2),max(uid1,uid2)) in golden_edges)] + extract_feature_for_pair_users(uid1,uid2))
 	return samples
-
-
 
 samples_train = get_features_for_samples(sample_pairs_train)
 samples_test = get_features_for_samples(sample_pairs_test)
@@ -320,12 +262,16 @@ timer = ProgressBar(title="5-fold on {} samples (Random Forest)".format(len(samp
 from sklearn.ensemble import RandomForestClassifier
 from sklearn import cross_validation
 
-del samples_train
+# TY:Change to None, Del in Python doesn't do anything I believe
+samples_train = None
 clf = RandomForestClassifier(n_estimators=200, n_jobs=-1)
+clf2 = RandomForestClassifier(n_estimators=200, n_jobs=-1)
+
 # scores = cross_validation.cross_val_score(clf, X, Y, cv=5)
 # print "5-Fold score = {}".format(np.mean(scores))
 
 clf.fit(X, Y)
+clf2.fit(XX,YY)
 
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
@@ -347,8 +293,13 @@ Predicting the real test pairs
 # 'candidate_pairs.baseline.nn.15.test-100k.with-orders.tf-scaled.json.gz',
 # 'candidate_pairs.baseline.nn.15.train-100k.with-orders.tf-binary.strict.json.gz'
 # ]
+
+
 models=['candidates/candidate_pairs.baseline.nn.100.test-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
 ]#'candidates/candidate_pairs.nn.100.test-100k.word2vec.json.gz']
+if(args.mode=='final'):
+	print("Testing for final result")
+	models=['candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz']
 
 nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in models]
 order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
@@ -364,7 +315,6 @@ random.shuffle(nn_pairs)
 
 from multiprocessing.pool import ThreadPool
 pool = ThreadPool(20)
-
 
 def get_features_for_samples_test(sample_pairs):
 	samples = []
@@ -387,7 +337,9 @@ def predict(pairs):
 	timer.tick()
 	samples = get_features_for_samples_test(pairs)
 	confidences = clf.predict_proba(samples).tolist()
-	return [(pair[0],pair[1], confidences[i][1]) for i,pair in enumerate(pairs)]
+	confidences2 = clf2.predict_proba(samples).tolist()
+
+	return [(pair[0],pair[1], (confidences[i][1] + confidences2[i][1]) / 2) for i,pair in enumerate(pairs)]
 
 def chunks(l, n):
 	"""Yield successive n-sized chunks from l."""
@@ -490,7 +442,6 @@ for r in results[:215307]:  #192149 #215307
 	results_top_prediction.append((r[0],r[1]))
 write_to_file(results_top_prediction, 'result_ordered.submit.txt')
 evaluate(results_top_prediction)
-
 
 # output the positive predictions
 results_strict = []

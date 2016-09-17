@@ -77,7 +77,6 @@ def extend_by_triple(pairs):
 	res= [p for p in pairs if (min(p[0],p[1]),max(p[0],p[1])) in new_ps]
 	return res #sorted(res, key=lambda x: x[2])
 
-
 def extend_by_merging_cluster(pairs):
 	all_vertexs = set([p[0] for p in pairs] + [p[1] for p in pairs])
 	edges = set([(p[0],p[1]) for p in pairs])

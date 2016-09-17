@@ -1,8 +1,9 @@
-/candidates
 *.gz
 *.txt
 *.pyc
 *.csv
 *.zip
 *.npy
+*.json
+*.pkl
 *.doc2vec

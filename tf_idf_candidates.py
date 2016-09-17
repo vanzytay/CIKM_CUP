@@ -15,7 +15,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 print datetime.now().strftime("%H:%M:%S start")
 
 urls_tokens = {}
-with open('./urls.csv') as f_in:
+with open('./datasets/urls.csv') as f_in:
 	for line in tqdm(f_in):
 		key, tokens = line.strip().split(',')
 
@@ -39,7 +39,7 @@ with open('./urls.csv') as f_in:
 		urls_tokens[key] = urls
 
 facts = {}
-with open('./facts.json') as f_in:
+with open('./datasets/facts.json') as f_in:
 	for line in tqdm(f_in):
 		j = json.loads(line.strip())
 		lst=[]
@@ -50,8 +50,8 @@ with open('./facts.json') as f_in:
 del urls_tokens 
 
 users_in_train = set()
-with open('./facts.txt','w') as f_out:
-	with open('./test_100k.csv') as f_in:
+with open('./datasets/facts.txt','w') as f_out:
+	with open('./datasets/train.csv') as f_in:
 		for line in tqdm(f_in):
 			user1,user2 = line.strip().split(',')
 			f_out.write("%s %s\n" % (facts[user1], facts[user2]))
@@ -60,16 +60,18 @@ users_for_predict = set(facts.keys()).difference(users_in_train)
 
 
 users_for_predict_list = sorted(list(users_in_train)) #!!!users_for_predict
-with open('./facts_test.tsv','w') as f_out:
+with open('./datasets/facts_test.tsv','w') as f_out:
 	for x in users_for_predict_list:
 		f_out.write("%s\t%s\n" % (x, facts[x]))
+		
 del users_for_predict_list
 del users_in_train
 del users_for_predict
 
 print datetime.now().strftime("%H:%M:%S done with preprocessing")
 		
-tf = TfidfVectorizer(min_df=2, lowercase=False, preprocessor=None, binary=False, sublinear_tf =True).fit(map(lambda x: x.strip().split('\t')[-1], open('facts_test.tsv').readlines()))
+tf = TfidfVectorizer(min_df=2, lowercase=False, preprocessor=None, binary=False, sublinear_tf =True).fit(map(lambda x: x.strip().split('\t')[-1],\
+																					 open('./datasets/facts_test.tsv').readlines()))
 print "Size Vobab = {}".format(len(tf.idf_))
 
 #binary=True
@@ -77,7 +79,7 @@ print "Size Vobab = {}".format(len(tf.idf_))
 del facts
 
 users, row_text = [], []
-with open('facts_test.tsv') as f_in:
+with open('./datasets/facts_test.tsv') as f_in:
 	for line in tqdm(f_in):
 		user, t = line.strip().split('\t')
 		users.append(user)
@@ -93,7 +95,6 @@ knn.fit(tf_test, range(1, tf_test.shape[0] + 1))
 del tf_test
 pool = ThreadPool(20)
 
-
 '''
 output with order
 '''
@@ -103,14 +104,14 @@ def get_predict(line):
 	res = []
 	timer.tick()
 	user_id, tokens = line.strip().split('\t')
-	tmp = knn.kneighbors(X=tf.transform([tokens]), n_neighbors=100, return_distance=True)
+	tmp = knn.kneighbors(X=tf.transform([tokens]), n_neighbors=15, return_distance=True)
 	for i in range(len(tmp[0][0])):
 		if user_id!=users[tmp[1][0][i]]:
 				res.append((user_id, users[tmp[1][0][i]], tmp[0][0][i], i+1))
 	res = sorted(res, key=lambda x: x[2])
 	return  [(r[0],r[1],r[2],i+1) for i,r in enumerate(res)]
 
-lines = open('facts_test.tsv').readlines()
+lines = open('./datasets/facts_test.tsv').readlines()
 results = pool.map(get_predict, lines)
 del knn
 del tf
@@ -120,6 +121,8 @@ from myScripts import *
 data = [y for x in results for y in x]
 del results
 data = sorted(data, key=lambda x: x[2])
-dictToFile(data,'candidates/candidate_pairs.baseline.nn.100.test-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz')
+print("Saving data to file")
+print(len(data))
+dictToFile(data,'candidates/candidate_pairs.baseline.nn.100.train-500k.with-orders.tf-scaled.full-hierarchy.3.json.gz')
 
 
