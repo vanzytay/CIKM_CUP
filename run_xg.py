@@ -55,8 +55,11 @@ def click_distribution_similarity_KL(dt1, dt2):
 	sum = np.sum(r)
 	return min(MAX_SIM,1/sum) if sum!=0 else MAX_SIM 
 
-
 doc2vec_model = Doc2Vec.load('models/user-url.d.400.w.8.minf.1.filtered-urls.5trains.doc2vec')
+doc2vec_model_h1 = Doc2Vec.load('models/mdl_urls_300_w5_h1.d2v')
+doc2vec_model_h2 = Doc2Vec.load('models/mdl_urls_300_w10_h2.d2v')
+doc2vec_model_h3 = Doc2Vec.load('models/mdl_urls_300_w10_h3.d2v')
+doc2vec_model_concat = Doc2Vec.load('models/mdl_urls_300_concat.d2v')
 word_model = Doc2Vec.load('models/mdl_word.d2v')
 
 def get_time_overalap(u1,u2,interval, thrs):
@@ -85,10 +88,6 @@ def extract_feature_for_pair_users(uid1, uid2):
 	# 	tmp = uid1
 	# 	uid1 = uid2
 	# 	uid2 = uid1
-
-	'''
-	I added feature columns. But not sure if this way will slow it down
-	'''
 
 	global user_features
 	global feature_index 
@@ -137,11 +136,14 @@ def extract_feature_for_pair_users(uid1, uid2):
 	# features.append(click_distribution_similarity_KL(cc_dt_n1, cc_dt_n2))
 	# features.append(click_distribution_similarity_KL(cc_t_n1, cc_t_n2))
 
+	#-------------------TF-IDF features--------------------------#
 	order_objs_lens = []
 	for obj in order_objs:
 		tmp_f = obj.get_orders_infor(uid1,uid2)
 		features+= tmp_f
 		order_objs_lens.append(len(tmp_f))
+
+	#------------------Doc2Vec Features--------------------------#
 	try:
 		v1 = doc2vec_model.docvecs[uid1]
 		v2 = doc2vec_model.docvecs[uid2]
@@ -149,12 +151,59 @@ def extract_feature_for_pair_users(uid1, uid2):
 	except:
 		cos = -1
 		pass
-	# Try adding entire vectors
-	# features+=v1.tolist()
-	# features+=v2.tolist()
+
+	features.append(cos)
+	#------------Doc2vec Higher Level x 1------------------------------#
+	try:
+		# TY: My word_level model uses USER_ + ID as label id
+		v1 = doc2vec_model_h1.docvecs['USER_'+str(uid1)]
+		v2 = doc2vec_model_h1.docvecs['USER_'+str(uid2)]
+		cos = 1 - spatial.distance.cosine(v1, v2)
+	except:
+		cos = -1
+		pass
+
+	features.append(cos)
+
+	#------------Doc2vec Higher Level x 2------------------------------#
+	try:
+		# TY: My word_level model uses USER_ + ID as label id
+		v1 = doc2vec_model_h2.docvecs['USER_'+str(uid1)]
+		v2 = doc2vec_model_h2.docvecs['USER_'+str(uid2)]
+		cos = 1 - spatial.distance.cosine(v1, v2)
+	except:
+		cos = -1
+		pass
+
+	features.append(cos)
+
+	#------------Doc2vec Higher Level x 3------------------------------#
+	try:
+		# TY: My word_level model uses USER_ + ID as label id
+		v1 = doc2vec_model_h3.docvecs['USER_'+str(uid1)]
+		v2 = doc2vec_model_h3.docvecs['USER_'+str(uid2)]
+		cos = 1 - spatial.distance.cosine(v1, v2)
+	except:
+		cos = -1
+		pass
+
 	features.append(cos)
 
 
+	#------------Doc2vec Level 0 Concat ------------------------------#
+	try:
+		# TY: My word_level model uses USER_ + ID as label id
+		v1 = doc2vec_model_concat.docvecs['USER_'+str(uid1)]
+		v2 = doc2vec_model_concat.docvecs['USER_'+str(uid2)]
+		cos = 1 - spatial.distance.cosine(v1, v2)
+	except:
+		cos = -1
+		pass
+
+	features.append(cos)
+
+
+	#------------Word-Lvl Doc2vec------------------------------#
 	try:
 		# TY: My word_level model uses USER_ + ID as label id
 		v1 = word_model.docvecs['USER_'+str(uid1)]
@@ -178,6 +227,10 @@ def extract_feature_for_pair_users(uid1, uid2):
 		for oo in order_objs_lens:
 			feature_columns+=['order_objs_'+str(i) for i in range(oo)]
 		feature_columns+=['doc2vec_dist']
+		feature_columns+=['doc2vec_dist_h1']
+		feature_columns+=['doc2vec_dist_h2']
+		feature_columns+=['doc2vec_dist_h3']
+		feature_columns+=['doc2vec_dist_concat']
 		feature_columns+=['word_model_dist']
 		# This should be equal!
 		print("Number of feature columns %d",len(feature_columns))
@@ -187,8 +240,8 @@ def extract_feature_for_pair_users(uid1, uid2):
 	return features 
 
 
-models=['candidates/candidate_pairs.baseline.nn.100.train-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
-]#'candidates/candidate_pairs.nn.100.train-100k.word2vec.json.gz']
+models=['candidates/candidate_pairs.baseline.nn.100.train-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
+#'candidates/candidate_pairs.nn.100.train-100k.word2vec.json.gz']
 
 nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in models]
 order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
@@ -251,15 +304,15 @@ XX = [e[3:] for e in samples_test]
 YY = [e[2] for e in samples_test]
 
 '''
-Random Forest
+Setting up XG Boost
 '''
 timer = ProgressBar(title="Running XG Boost")
 
 samples_train = None
 
 xgb1 = XGBClassifier(
- learning_rate =0.1,
- n_estimators=50,
+ learning_rate =0.01,
+ n_estimators=2500,
  max_depth=5,
  min_child_weight=1,
  gamma=0,
@@ -267,181 +320,195 @@ xgb1 = XGBClassifier(
  colsample_bytree=0.8,
  objective= 'binary:logistic',
  nthread=8,
+ reg_alpha=0.005,
  scale_pos_weight=1,
  seed=27)
 
-modelfit(xgb1, np.array(X), np.array(Y), feature_index=feature_index)
- 
 
+# modelfit(xgb1, np.array(X), np.array(Y), feature_index=feature_index)
+print("Fitting XGB[1]")
+xgb1.fit(np.array(X),np.array(Y), verbose=True)
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 from sklearn.metrics import f1_score
+
+print("Predicting XGB[1] on hold out set")
 YY_result = xgb1.predict(XX)
 print "P[class-1] = {}".format(precision_score(YY, YY_result, pos_label=1, average='binary'))
 print "R[class-1] = {}".format(recall_score(YY, YY_result, pos_label=1, average='binary'))
 print "F1[class-1] = {}".format(f1_score(YY, YY_result, pos_label=1, average='binary'))
 print "Golden_count={}; Predict_count={}".format(sum(YY), sum(YY_result))
 
+# print("Fitting XGB[2]")
+# xgb2.fit(np.array(XX),np.array(YY), verbose=True)
 
+# print("Predicting XGB[2] on hold out set")
+# Y_result = xgb2.predict(X)
+# print "P[class-1] = {}".format(precision_score(Y, Y_result, pos_label=1, average='binary'))
+# print "R[class-1] = {}".format(recall_score(Y, Y_result, pos_label=1, average='binary'))
+# print "F1[class-1] = {}".format(f1_score(Y, Y_result, pos_label=1, average='binary'))
+# print "Golden_count={}; Predict_count={}".format(sum(Y), sum(Y_result))
 
-
-# '''
-# Predicting the real test pairs
-# '''
-# # models = ['candidate_pairs.baseline.nn.15.test-100k.with-orders.strict.json.gz', 
-# # 'candidate_pairs.nn.15.test-100k.doc2vec.json.gz',
-# # 'candidate_pairs.baseline.nn.15.test-100k.with-orders.tf-scaled.json.gz',
-# # 'candidate_pairs.baseline.nn.15.train-100k.with-orders.tf-binary.strict.json.gz'
-# # ]
+'''
+Predicting the real test pairs
+'''
+# models = ['candidate_pairs.baseline.nn.15.test-100k.with-orders.strict.json.gz', 
+# 'candidate_pairs.nn.15.test-100k.doc2vec.json.gz',
+# 'candidate_pairs.baseline.nn.15.test-100k.with-orders.tf-scaled.json.gz',
+# 'candidate_pairs.baseline.nn.15.train-100k.with-orders.tf-binary.strict.json.gz'
+# ]
 # models=['candidates/candidate_pairs.baseline.nn.100.test-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
 # ]#'candidates/candidate_pairs.nn.100.test-100k.word2vec.json.gz']
 
-# nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in models]
-# order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
+models=['candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz']
+
+nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in models]
+order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
 
 
-# nn_pairs= []
-# for ps in nn_pairs_lst:
-# 	nn_pairs += ps
+nn_pairs= []
+for ps in nn_pairs_lst:
+	nn_pairs += ps
 
-# nn_pairs = filter_nn_pairs(nn_pairs)
-# random.shuffle(nn_pairs)
-
-
-# from multiprocessing.pool import ThreadPool
-# pool = ThreadPool(20)
+nn_pairs = filter_nn_pairs(nn_pairs)
+random.shuffle(nn_pairs)
 
 
-# def get_features_for_samples_test(sample_pairs):
-# 	samples = []
-# 	for pair in sample_pairs:
-# 		uid1,uid2 = pair[0], pair[1]
-# 		# uid2 may be the keys
-# 		try:
-# 			if uid1 in orders[uid2].keys():
-# 				order = orders[udi2][uid1]
-# 			else:
-# 				order = 100
-# 		except:
-# 			order=100
-# 		samples.append(extract_feature_for_pair_users(uid1,uid2))
-# 	return samples
+from multiprocessing.pool import ThreadPool
+pool = ThreadPool(20)
 
 
-# timer = ProgressBar(title="Predicting")
-# def predict(pairs):
-# 	timer.tick()
-# 	samples = get_features_for_samples_test(pairs)
-# 	confidences = clf.predict_proba(samples).tolist()
-# 	return [(pair[0],pair[1], confidences[i][1]) for i,pair in enumerate(pairs)]
-
-# def chunks(l, n):
-# 	"""Yield successive n-sized chunks from l."""
-# 	for i in range(0, len(l), n):
-# 		yield l[i:i + n]
-
-# results_tmp = pool.map(predict, chunks(nn_pairs, 10000))
-# results_tmp = [y for x in results_tmp for y in x]
-
-# # Combine scores
-# cs = {}
-# cs_keys = set()
-# r_ps = set()
-# for r in results_tmp:
-# 	u1,u2 = min(r[0],r[1]), max(r[0],r[1])
-# 	if u1 not in cs_keys:
-# 		cs[u1] = {}
-# 		cs_keys.add(u1)
-# 	try:
-# 		cs[u1][u2] = (cs[u1][u2] + r[2])/2
-# 	except:
-# 		cs[u1][u2] = r[2]
-# 		pass
-# 	r_ps.add((u1,u2))
+def get_features_for_samples_test(sample_pairs):
+	samples = []
+	for pair in sample_pairs:
+		uid1,uid2 = pair[0], pair[1]
+		# uid2 may be the keys
+		try:
+			if uid1 in orders[uid2].keys():
+				order = orders[udi2][uid1]
+			else:
+				order = 100
+		except:
+			order=100
+		samples.append(extract_feature_for_pair_users(uid1,uid2))
+	return samples
 
 
-# ordered_score ={}
-# for r in results_tmp:
-# 	ordered_score[r[0]] = []
+timer = ProgressBar(title="Predicting")
+def predict(pairs):
+	timer.tick()
+	samples = get_features_for_samples_test(pairs)
+	confidences = xgb1.predict_proba(samples).tolist()
+	# confidences2 = xgb2.predict_proba(samples).tolist()
+	return [(pair[0],pair[1],confidences[i][1]) for i,pair in enumerate(pairs)]
+	# return [(pair[0],pair[1], (confidences[i][1] + confidences2[i][1]) / 2) for i,pair in enumerate(pairs)]
 
-# for r in results_tmp:
-# 	u1,u2 = r[0], r[1]
-# 	ordered_score[u1].append((u2, cs[min(u1,u2)][max(u1,u2)]))
+def chunks(l, n):
+	"""Yield successive n-sized chunks from l."""
+	for i in range(0, len(l), n):
+		yield l[i:i + n]
 
-# for u in ordered_score.keys():
-# 	ordered_score[u] = sorted(ordered_score[u], key=lambda x: x[-1],  reverse=True)	
+results_tmp = pool.map(predict, chunks(nn_pairs, 10000))
+results_tmp = [y for x in results_tmp for y in x]
 
-# #finalize the result by layer
-# output_set = set()
-# results = []
-# current_layer = 0
-# while len(output_set)<len(r_ps):
-# 	# !!!
-# 	break
-# 	tmp_lst = []
-# 	for u1 in ordered_score.keys():
-# 		if current_layer < len(ordered_score[u1]):
-# 			u2 = ordered_score[u1][current_layer][0]
-# 			if (min(u1,u2),max(u1,u2)) not in output_set:
-# 				output_set.add((min(u1,u2),max(u1,u2)))
-# 				tmp_lst.append((min(u1,u2),max(u1,u2),ordered_score[u1][current_layer][1]))
-# 	tmp_lst = sorted(tmp_lst, key=lambda x: x[-1],  reverse=True)
-# 	results += tmp_lst
-# 	current_layer += 1
-# 	if current_layer==1:
-# 		break
-
-# results_full = [(p[0],p[1],cs[p[0]][p[1]]) for p in r_ps]
-# results_full = sorted(results_full, key=lambda x: x[-1],  reverse=True)
-
-# for r in results_full:
-# 	u1,u2 = r[0], r[1]
-# 	if (u1,u2) not in output_set:
-# 		results.append((u1,u2, cs[u1][u2]))
+# Combine scores
+cs = {}
+cs_keys = set()
+r_ps = set()
+for r in results_tmp:
+	u1,u2 = min(r[0],r[1]), max(r[0],r[1])
+	if u1 not in cs_keys:
+		cs[u1] = {}
+		cs_keys.add(u1)
+	try:
+		cs[u1][u2] = (cs[u1][u2] + r[2])/2
+	except:
+		cs[u1][u2] = r[2]
+		pass
+	r_ps.add((u1,u2))
 
 
-# # results = [(p[0],p[1],cs[p[0]][p[1]]) for p in r_ps]
-# # results = sorted(results, key=lambda x: x[-1],  reverse=True)
-# timer.finish()
+ordered_score ={}
+for r in results_tmp:
+	ordered_score[r[0]] = []
 
-# # dictToFile(results, 'candidate_pairs.result.100.with-orders.json.gz')
+for r in results_tmp:
+	u1,u2 = r[0], r[1]
+	ordered_score[u1].append((u2, cs[min(u1,u2)][max(u1,u2)]))
+
+for u in ordered_score.keys():
+	ordered_score[u] = sorted(ordered_score[u], key=lambda x: x[-1],  reverse=True)	
+
+#finalize the result by layer
+output_set = set()
+results = []
+current_layer = 0
+while len(output_set)<len(r_ps):
+	# !!!
+	break
+	tmp_lst = []
+	for u1 in ordered_score.keys():
+		if current_layer < len(ordered_score[u1]):
+			u2 = ordered_score[u1][current_layer][0]
+			if (min(u1,u2),max(u1,u2)) not in output_set:
+				output_set.add((min(u1,u2),max(u1,u2)))
+				tmp_lst.append((min(u1,u2),max(u1,u2),ordered_score[u1][current_layer][1]))
+	tmp_lst = sorted(tmp_lst, key=lambda x: x[-1],  reverse=True)
+	results += tmp_lst
+	current_layer += 1
+	if current_layer==1:
+		break
+
+results_full = [(p[0],p[1],cs[p[0]][p[1]]) for p in r_ps]
+results_full = sorted(results_full, key=lambda x: x[-1],  reverse=True)
+
+for r in results_full:
+	u1,u2 = r[0], r[1]
+	if (u1,u2) not in output_set:
+		results.append((u1,u2, cs[u1][u2]))
 
 
-# def write_to_file(results, filename):
-# 	with open(filename,'w') as f:
-# 		for r in results:
-# 			f.write("{},{}\n".format(r[0],r[1]))
+# results = [(p[0],p[1],cs[p[0]][p[1]]) for p in r_ps]
+# results = sorted(results, key=lambda x: x[-1],  reverse=True)
+timer.finish()
+
+# dictToFile(results, 'candidate_pairs.result.100.with-orders.json.gz')
+
+def write_to_file(results, filename):
+	with open(filename,'w') as f:
+		for r in results:
+			f.write("{},{}\n".format(r[0],r[1]))
 
 
-# def evaluate(results):
-# 	golden_edges = set()
-# 	with open('test_100k.csv','r') as f:
-# 		for line in f:
-# 			uid1, uid2 = line.strip().split(',')
-# 			golden_edges.add((min(uid1, uid2),max(uid1, uid2)))
+def evaluate(results):
+	golden_edges = set()
+	with open('test_100k.csv','r') as f:
+		for line in f:
+			uid1, uid2 = line.strip().split(',')
+			golden_edges.add((min(uid1, uid2),max(uid1, uid2)))
 
-# 	t_p = 0
-# 	count = 0
-# 	for pair in results:
-# 		if (pair[0],pair[1]) in golden_edges:
-# 			t_p+=1
-# 		count += 1
-# 	print "P@{} = {}".format(count, float(t_p)/count)
-# 	print "R@{} = {}".format(count, float(t_p)/len(golden_edges))
-
-
-# # output the top predictions
-# results_top_prediction = []
-# for r in results[:215307]:  #192149 #215307
-# 	results_top_prediction.append((r[0],r[1]))
-# write_to_file(results_top_prediction, 'result_ordered.submit.txt')
-# evaluate(results_top_prediction)
+	t_p = 0
+	count = 0
+	for pair in results:
+		if (pair[0],pair[1]) in golden_edges:
+			t_p+=1
+		count += 1
+	print "P@{} = {}".format(count, float(t_p)/count)
+	print "R@{} = {}".format(count, float(t_p)/len(golden_edges))
 
 
-# # output the positive predictions
-# results_strict = []
-# for r in results:
-# 	if r[2]>=0.5:
-# 		results_strict.append((r[0],r[1]))
-# write_to_file(results_strict,'result_strict.submit.txt')
-# evaluate(results_strict)
+# output the top predictions
+results_top_prediction = []
+for r in results[:215307]:  #192149 #215307
+	results_top_prediction.append((r[0],r[1]))
+write_to_file(results_top_prediction, 'result_ordered.submit.txt')
+evaluate(results_top_prediction)
+
+
+# output the positive predictions
+results_strict = []
+for r in results:
+	if r[2]>=0.5:
+		results_strict.append((r[0],r[1]))
+write_to_file(results_strict,'result_strict.submit.txt')
+evaluate(results_strict)

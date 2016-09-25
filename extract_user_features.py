@@ -39,6 +39,7 @@ def dict_to_order_list(d):
 timer = ProgressBar()
 user_features = {}
 
+
 with open('./datasets/facts.json','r') as f:
 	for line in f:
 		js = json.loads(line.strip())
@@ -47,6 +48,7 @@ with open('./datasets/facts.json','r') as f:
 		uid = js['uid']
 		click_count_day_time = {}
 		fact_count_day_time = {}
+
 		for i in range(MAX_GRP):
 			click_count_day_time[i] = 0
 			fact_count_day_time[i] = []

@@ -114,7 +114,6 @@ def dictFromFileUnicodeNormal(path):
 	with open(path, 'r') as f:
 		return json.loads(f.read())
 
-
 def dictFromFileUnicode(path):
 	'''
 	Read js file:

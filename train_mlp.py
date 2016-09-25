@@ -333,7 +333,7 @@ def create_baseline():
 
 # encoded_YY = encoder.transform(YY)
 
-# model = create_baseline()
+model = create_baseline()
 
 estimator = KerasClassifier(build_fn=create_baseline, nb_epoch=25, batch_size=64, verbose=1)
 estimator.fit(X, Y)
