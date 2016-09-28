@@ -61,7 +61,7 @@ def click_distribution_similarity_KL(dt1, dt2):
 	return min(MAX_SIM,1/sum) if sum!=0 else MAX_SIM 
 
 
-doc2vec_model = Doc2Vec.load('user-url.d.400.w.8.minf.1.filtered-urls.5trains.doc2vec')
+# doc2vec_model = Doc2Vec.load('user-url.d.400.w.8.minf.1.filtered-urls.5trains.doc2vec')
 
 def get_time_overalap(u1,u2,interval, thrs):
 	t1 = [e[1] for e in user_facts[u1]]
@@ -304,13 +304,12 @@ X = np.array(X)
 Y = np.array(Y)
 XX = np.array(XX)
 YY = np.array(YY)
+
 '''
 Run Keras MLP
 '''
 # timer = ProgressBar(title="5-fold on {} samples (Random Forest)".format(len(samples_train)))
 print("Training MLP...(with GPU hopefully)..")
-from sklearn.ensemble import RandomForestClassifier
-from sklearn import cross_validation
 
 # TY:Change to None, Del in Python doesn't do anything I believe
 samples_train = None
