@@ -20,6 +20,7 @@ from sklearn.pipeline import Pipeline
 
 '''
 Run MLP version of train/test
+Not used!
 '''
 
 # Init Seed for Reproducibility

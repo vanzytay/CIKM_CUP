@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-'''
-Script for CIKM Cup 2016 
+''' Script for CIKM Cup 2016 
 Cross-Device Entity Linking Challenge
 Event-based RNN to predict user given a sequence of events
 '''
@@ -24,22 +23,29 @@ from collections import Counter,OrderedDict
 import json
 from tqdm import tqdm
 import math
-from utilities import *
 from itertools import groupby
 from keras.models import load_model
-
+sys.path.append('../shared')
+from ordered_object import *
+from utilities import *
 
 # Setup logger
 logger = logging.getLogger()
 logging.basicConfig(level=logging.DEBUG)
 
 class EventRNN:
+    """ Event Recurrent Neural Network 
+    Implements 2 GRU units using Keras
+    Performs binary classification with two GRUs
+    Trains user pair -> 1 if same user and =0 if otherwise (negative sampling)
+    """
 
+    def __init__(self):
+        self.model = None
 
     def saveEnvironment(self, mode='load'):
         limit = None
         # Load Events from File
-
         user_map1 = {}
         user_map2 = {}
         users_in_train = []
@@ -123,14 +129,14 @@ class EventRNN:
         if(mode=='save'):
             dictToFile(self.env,'seq_env_sorted_urls_pruned_h0.json.gz')
 
-    def setup():
+    def setup(self):
         logging.info("Loading Training Set..")
         # Get training users
         self.users_in_train = []
         self.user_map1 = {}
         self.user_map2 = {}
         self.train_set = []
-        with open('./Dataset/train.csv') as f_in:
+        with open('../datasets/train.csv') as f_in:
             for line in tqdm(f_in):
                 user1, user2 = line.strip().split(',')
                 self.user_map1[user1] = user2
@@ -141,17 +147,17 @@ class EventRNN:
         # Loading Saved Dictionaries
         logging.info("Loading saved environment...")
         self.env = dictFromFileUnicode('seq_env_sorted_urls_h0.json.gz')
-        self.user_logs = env['user_log']
-        self.url_index = env['url_index']
-        self.maxlen = env['maxlen']
-        self.user_indices = env['user_indices']
+        self.user_logs = self.env['user_log']
+        self.url_index = self.env['url_index']
+        self.maxlen = self.env['maxlen']
+        self.user_indices = self.env['user_indices']
         self.env = None
         self._create_model()
 
     def _create_model(self):
         EMBED_HIDDEN_SIZE = 32
 
-        logging.info("Maxlen:%d",maxlen)
+        logging.info("Maxlen:%d", self.maxlen)
         logging.info("Creating LSTM model")
         #-----------------Create LSTM------------------------------#
 
@@ -262,18 +268,51 @@ class EventRNN:
         self.X1_test = sequence.pad_sequences(X1_test, maxlen=maxlen)
         self.X2_test = sequence.pad_sequences(X2_test, maxlen=maxlen)
 
-
     def fit():
         logging.info("Starting training of Event RNN")
         for i in range(0,100):
             self.model.fit([X1,X2],Y, nb_epoch=1, batch_size=32, verbose=1)
             scores = self.model.evaluate([X1_test,X2_test],Y_test, verbose=1)
-            model.save_weights('Deep_Models/GRU1.h5', overwrite=True)
+            self.model.save_weights('models/GRU1.h5', overwrite=True)
 
+    def loadCandidates(self):
+        """ Calculate scores for candidate pairs
+        """
+        models=['../candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz']
+        nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in models]
+        order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
+        nn_pairs= []
+        for ps in nn_pairs_lst:
+            nn_pairs += ps
+        nn_pairs = filter_nn_pairs(nn_pairs)
+        self.candidates = nn_pairs
+        logging.info("Loaded candidates")
+
+    def _load_weights(self):
+        self.model.load_weights('models/GRU1.h5')
+        logging.info("Loaded weights!")
+
+    def computeCandidateScores(self):
+        """ Computes scores for candidate pairs
+        """
+        self.candidate_scores = {}
+        self._load_weights()
+        X1, X2 = [], []
+        for pair in tqdm(self.candidates):
+            user1_seq = self.user_logs[pair[0]]
+            user2_seq = self.user_logs[pair[1]]
+            _x1, _x2 = np.array(user1_seq), np.array(user2_seq)
+            _x1 = sequence.pad_sequences([_x1], maxlen=self.maxlen)
+            _x2 = sequence.pad_sequences([_x2], maxlen=self.maxlen)
+            proba = self.model.predict_proba([_x1,_x2])
+            logging.info(proba)
+            self.candidate_scores[tuple(pair)] = proba
 
 if __name__ == '__main__':
     e = EventRNN()
     e.setup()
-
+    e.loadCandidates()
+    e.computeCandidateScores()
+    dictToFileNormal(e.candidate_scores, 'rnn_scores.json.gz')
 
 

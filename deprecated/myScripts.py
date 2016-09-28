@@ -40,6 +40,7 @@ def HTMLEntitiesToUnicode(text):
 	return text
 
 import time
+
 def getData(url,data):
 	for i in range(5):
 		try:
@@ -92,7 +93,6 @@ def jaccardSimilaritySet(s1, s2):
 		return 0
 	else:
 		return float(len(s1&s2))/float(len(s1|s2))
-
 
 def dictToFile(dict,path):
 	print "Writing to {}".format(path)

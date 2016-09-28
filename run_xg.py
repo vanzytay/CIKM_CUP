@@ -1,7 +1,5 @@
 from __future__ import division
 from collections import defaultdict
-from myScripts import *
-from ordered_object import *
 import string
 import json
 import tqdm
@@ -14,6 +12,9 @@ from xg_lib import *
 import xgboost as xgb
 from xgboost.sklearn import XGBClassifier
 import argparse
+from shared.ordered_object import *
+from shared.utilities import *
+
 # Set up args parser
 parser = argparse.ArgumentParser()
 parser.add_argument("-m", "--mode", type=str,
@@ -55,6 +56,7 @@ def click_distribution_similarity_KL(dt1, dt2):
 	sum = np.sum(r)
 	return min(MAX_SIM,1/sum) if sum!=0 else MAX_SIM 
 
+# Load doc2vec ensemble!
 doc2vec_model = Doc2Vec.load('models/user-url.d.400.w.8.minf.1.filtered-urls.5trains.doc2vec')
 doc2vec_model_h1 = Doc2Vec.load('models/mdl_urls_300_w5_h1.d2v')
 doc2vec_model_h2 = Doc2Vec.load('models/mdl_urls_300_w10_h2.d2v')
