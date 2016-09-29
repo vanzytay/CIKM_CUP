@@ -241,7 +241,7 @@ def extract_feature_for_pair_users(uid1, uid2):
 	# features+=get_time_overalap(uid1,uid2,60,[1,5,10,30])
 	return features 
 
-def get_features_for_samples(sample_pairs):
+def get_features_for_samples(sample_pairs, golden_edges):
 	samples = []
 	for pair in sample_pairs:
 		# !!! duplication
@@ -374,8 +374,8 @@ random.shuffle(sample_pairs_train)
 
 del nn_pairs
 
-samples_train = get_features_for_samples(sample_pairs_train)
-samples_test = get_features_for_samples(sample_pairs_test)
+samples_train = get_features_for_samples(sample_pairs_train, golden_edges)
+samples_test = get_features_for_samples(sample_pairs_test, golden_edges)
 X = [e[3:] for e in samples_train]
 Y = [e[2] for e in samples_train]
 XX = [e[3:] for e in samples_test]
