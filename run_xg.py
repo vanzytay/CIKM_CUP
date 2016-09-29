@@ -287,7 +287,7 @@ while len(sample_pairs_train)<2.5*positive_count and i<len(nn_pairs): #3.5-5 for
 
 random.shuffle(sample_pairs_train)
 
-del nn_pairs
+
 
 
 def get_features_for_samples(sample_pairs):
@@ -298,8 +298,21 @@ def get_features_for_samples(sample_pairs):
 		samples.append([uid1,uid2,int((min(uid1,uid2),max(uid1,uid2)) in golden_edges)] + extract_feature_for_pair_users(uid1,uid2))
 	return samples
 
+
+
 samples_train = get_features_for_samples(sample_pairs_train)
 samples_test = get_features_for_samples(sample_pairs_test)
+
+_tmp = {'train':[e[:3] for e in samples_train],'test':[e[:3] for e in samples_test]}
+
+import cPickle as pickle
+with open('train_test.pkl','w+') as f:
+	pickle.dump(_tmp,f)
+print("Saved train/test to file")
+
+del nn_pairs
+
+
 X = [e[3:] for e in samples_train]
 Y = [e[2] for e in samples_train]
 XX = [e[3:] for e in samples_test]

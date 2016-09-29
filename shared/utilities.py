@@ -14,6 +14,7 @@ from collections import defaultdict
 import gzip
 import copy
 
+
 def splitByDelirmiters(myStr):
 	#myStr = unicode(myStr,'utf8')
 	myStr  = re.split(r'[!"#$%&\'()*+,-./:;<=>?@\[\\\]^_`{|}~ ]+',myStr)

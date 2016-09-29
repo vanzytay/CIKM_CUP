@@ -28,10 +28,19 @@ from keras.models import load_model
 sys.path.append('../shared')
 from ordered_object import *
 from utilities import *
+import cPickle as pickle
 
 # Setup logger
 logger = logging.getLogger()
 logging.basicConfig(level=logging.DEBUG)
+
+SUBMIT_FULL = 215307
+
+def write_to_file(results, filename):
+    with open(filename,'w') as f:
+        for r in results:
+            f.write("{},{}\n".format(r[0],r[1]))
+
 
 class EventRNN:
     """ Event Recurrent Neural Network 
@@ -135,14 +144,20 @@ class EventRNN:
         self.users_in_train = []
         self.user_map1 = {}
         self.user_map2 = {}
-        self.train_set = []
+       
         with open('../datasets/train.csv') as f_in:
             for line in tqdm(f_in):
                 user1, user2 = line.strip().split(',')
                 self.user_map1[user1] = user2
                 self.user_map2[user2] = user1
                 self.users_in_train += [user1,user2]
-                self.train_set.append((user1,user2))
+                # self.train_set.append((user1,user2))
+
+        with open('train_test.pkl','r') as f:
+            _tmp = pickle.load(f)
+
+        self.train_set = _tmp['train']
+        self.test_set = _tmp['test']
 
         # Loading Saved Dictionaries
         logging.info("Loading saved environment...")
@@ -152,10 +167,15 @@ class EventRNN:
         self.maxlen = self.env['maxlen']
         self.user_indices = self.env['user_indices']
         self.env = None
-        self._create_model()
+           # Build index and reverse index
+        self.url_indices = dict((c, i) for i, c in enumerate(self.url_index))
+        self.indices_url = dict((i, c) for i, c in enumerate(self.url_index))
+        
 
     def _create_model(self):
-        EMBED_HIDDEN_SIZE = 32
+        """ Creates a dual-GRU
+        """
+        EMBED_HIDDEN_SIZE = 128
 
         logging.info("Maxlen:%d", self.maxlen)
         logging.info("Creating LSTM model")
@@ -164,13 +184,14 @@ class EventRNN:
         u1_rnn = Sequential()
         u1_rnn.add(Embedding(len(self.url_index), EMBED_HIDDEN_SIZE,
                               input_length=self.maxlen))
-        u1_rnn.add(GRU(128))
+        u1_rnn.add(Bidirectional(GRU(256)))
         u1_rnn.add(Dropout(0.1))
+        
 
         u2_rnn = Sequential()
         u2_rnn.add(Embedding(len(self.url_index), EMBED_HIDDEN_SIZE,
                               input_length=self.maxlen))
-        u2_rnn.add(GRU(128))
+        u2_rnn.add(Bidirectional(GRU(256)))
         u2_rnn.add(Dropout(0.1))
 
         model = Sequential()
@@ -184,10 +205,6 @@ class EventRNN:
 
     def create_train_sets(self, verbose=1):
 
-        # Build index and reverse index
-        self.url_indices = dict((c, i) for i, c in enumerate(url_index))
-        self.indices_url = dict((i, c) for i, c in enumerate(url_index))
-
         # Initialize
         X1,X2 = [],[]
         Y = [] 
@@ -195,61 +212,58 @@ class EventRNN:
         Y_test = []
 
         # Form corrupt set
-        corrupt_set = []
+        # for pair in self.train_set:
+        #     # Get random pair in train set and mix
+        #     other_pair = self.train_set[random.randint(0,len(self.train_set)-1)]
+        #     if(pair[0]<other_pair[1]):
+        #         if(pair[0] in self.user_map1):
+        #             if(self.user_map1[pair[0]]==other_pair[1]):
+        #                 continue
+        #         new_pair = (pair[0],other_pair[1])
+        #         corrupt_set.append(new_pair)
+        #     else:
+        #         if(pair[0] in user_map2):
+        #             if(self.user_map2[other_pair[1]]==pair[0]):
+        #                 continue
+        #         new_pair = (pair[0],other_pair[1])
+        #         corrupt_set.append(new_pair)
 
-        for pair in self.train_set:
-            # Get random pair in train set and mix
-            other_pair = self.train_set[random.randint(0,len(self.train_set)-1)]
-            if(pair[0]<other_pair[1]):
-                if(pair[0] in self.user_map1):
-                    if(self.user_map1[pair[0]]==other_pair[1]):
-                        continue
-                new_pair = (pair[0],other_pair[1])
-                corrupt_set.append(new_pair)
-            else:
-                if(pair[0] in user_map2):
-                    if(self.user_map2[other_pair[1]]==pair[0]):
-                        continue
-                new_pair = (pair[0],other_pair[1])
-                corrupt_set.append(new_pair)
-
-        logging.info("Form corrupt set of %d",len(corrupt_set))
-
-        random.shuffle(self.train_set)
-        test_set = self.train_set[:25000]
-        train_set = self.train_set[25000:50000]
-        random.shuffle(corrupt_set)
-
-        logging.info('Train Set:%d | Test Set:%d',len(train_set),len(test_set))
-
-        for index, pair in enumerate(train_set):
+        logging.info('Train Set:%d | Test Set:%d',len(self.train_set),len(self.test_set))
+        seq_lens = []
+        for index, pair in enumerate(self.train_set):
             # Already converted to indices
             user1_seq = self.user_logs[pair[0]]
             user2_seq = self.user_logs[pair[1]]
+            seq_lens += [len(user1_seq),len(user2_seq)]
             X1.append(user1_seq)
             X2.append(user2_seq)
-            Y.append(1)
+            Y.append(pair[2])
             # Sample corrupt
-            corrupt_pair = corrupt_set[:25000][index]
-            user1_seq = self.user_logs[corrupt_pair[0]]
-            user2_seq = self.user_logs[corrupt_pair[1]]
-            X1.append(user1_seq)
-            X2.append(user2_seq)
-            Y.append(0)
+            # corrupt_pair = corrupt_set[:25000][index]
+            # user1_seq = self.user_logs[corrupt_pair[0]]
+            # user2_seq = self.user_logs[corrupt_pair[1]]
+            # X1.append(user1_seq)
+            # X2.append(user2_seq)
+            # Y.append(0)
 
-        for index,pair in enumerate(test_set):
+        for index,pair in enumerate(self.test_set):
             user1_seq = self.user_logs[pair[0]]
             user2_seq = self.user_logs[pair[1]]
+            seq_lens += [len(user1_seq),len(user2_seq)]
             X1_test.append(user1_seq)
             X2_test.append(user2_seq)
-            Y_test.append(1)
+            Y_test.append(pair[2])
             # Sample corrupt
-            corrupt_pair = corrupt_set[25000:][index]
-            user1_seq = self.user_logs[corrupt_pair[0]]
-            user2_seq = self.user_logs[corrupt_pair[1]]
-            X1_test.append(user1_seq)
-            X2_test.append(user2_seq)
-            Y_test.append(0)
+            # corrupt_pair = corrupt_set[25000:][index]
+            # user1_seq = self.user_logs[corrupt_pair[0]]
+            # user2_seq = self.user_logs[corrupt_pair[1]]
+            # X1_test.append(user1_seq)
+            # X2_test.append(user2_seq)
+            # Y_test.append(0)
+        # from collections import Counter
+
+        # count_lens = Counter(seq_lens)
+        # logging.info(count_lens)
 
         self.X1 = np.array(X1)
         self.X2 = np.array(X2)
@@ -259,34 +273,41 @@ class EventRNN:
         self.Y_test = np.array(Y_test)
 
         if(verbose==1):
-            logging.info(X1.shape)
-            logging.info(X2.shape)
-            logging.info(Y.shape)
-            
-        self.X1 = sequence.pad_sequences(X1, maxlen=maxlen)
-        self.X2 = sequence.pad_sequences(X2, maxlen=maxlen)
-        self.X1_test = sequence.pad_sequences(X1_test, maxlen=maxlen)
-        self.X2_test = sequence.pad_sequences(X2_test, maxlen=maxlen)
+            logging.info(self.X1.shape)
+            logging.info(self.X2.shape)
+            logging.info(self.Y.shape)
 
-    def fit():
-        logging.info("Starting training of Event RNN")
+        logging.info("Clipping max seq..")
+        self.maxlen = 200  
+        logging.info("Max Sequence Length:%d",self.maxlen)
+
+        self.X1 = sequence.pad_sequences(X1, maxlen=self.maxlen)
+        self.X2 = sequence.pad_sequences(X2, maxlen=self.maxlen)
+        self.X1_test = sequence.pad_sequences(X1_test, maxlen=self.maxlen)
+        self.X2_test = sequence.pad_sequences(X2_test, maxlen=self.maxlen)
+
+        self._create_model()
+
+    def fit(self):
+        logging.info("Starting training of Event RNN!")
         for i in range(0,100):
-            self.model.fit([X1,X2],Y, nb_epoch=1, batch_size=32, verbose=1)
-            scores = self.model.evaluate([X1_test,X2_test],Y_test, verbose=1)
-            self.model.save_weights('models/GRU1.h5', overwrite=True)
+            self.model.fit([self.X1,self.X2],self.Y, nb_epoch=1, batch_size=16, verbose=1)
+            if(i % 10==0):
+                scores = self.model.evaluate([self.X1_test,self.X2_test], self.Y_test, verbose=1)
+            self.model.save_weights('models/GRU_max.h5', overwrite=True)
 
     def loadCandidates(self):
         """ Calculate scores for candidate pairs
         """
         models=['../candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz']
-        nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in models]
+        nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),5) for m in models]
         order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
         nn_pairs= []
         for ps in nn_pairs_lst:
             nn_pairs += ps
         nn_pairs = filter_nn_pairs(nn_pairs)
         self.candidates = nn_pairs
-        logging.info("Loaded candidates")
+        logging.info("Loaded %d candidates",len(self.candidates))
 
     def _load_weights(self):
         self.model.load_weights('models/GRU1.h5')
@@ -301,18 +322,59 @@ class EventRNN:
         for pair in tqdm(self.candidates):
             user1_seq = self.user_logs[pair[0]]
             user2_seq = self.user_logs[pair[1]]
-            _x1, _x2 = np.array(user1_seq), np.array(user2_seq)
-            _x1 = sequence.pad_sequences([_x1], maxlen=self.maxlen)
-            _x2 = sequence.pad_sequences([_x2], maxlen=self.maxlen)
-            proba = self.model.predict_proba([_x1,_x2])
-            logging.info(proba)
-            self.candidate_scores[tuple(pair)] = proba
+            X1.append(user1_seq)
+            X2.append(user2_seq)
+        X1 = np.array(X1)
+        X2 = np.array(X2)
+        _x1 = sequence.pad_sequences(X1, maxlen=self.maxlen)
+        _x2 = sequence.pad_sequences(X2, maxlen=self.maxlen)
+        proba = self.model.predict_proba([_x1,_x2])
+        for index,p in tqdm(enumerate(proba)):
+            logging.info(p)
+            self.candidate_scores[tuple(self.candidates[index])] = p[0]
+
+    def generatePredictions(self, k):
+        """ Generates top-k predictions from candidates
+        """
+        import matplotlib.pyplot as plt
+        import operator
+        with open('candidate_scores.pkl','r') as f:
+            self.candidate_scores = pickle.load(f)
+        logging.info("Loaded scores!")
+        sorted_x = sorted(self.candidate_scores.items(), key=operator.itemgetter(1), reverse=True)
+        logging.info(sorted_x[k])
+        logging.info(len(sorted_x))
+        scores = [x[1] for x in sorted_x]
+        below_one = [x for x in scores if x<0.5]
+        logging.info(len(below_one))
+        logging.info(np.max(scores))
+        logging.info(np.min(scores))
+        results = []
+        for data in sorted_x[:k]:
+            pair = data[0]
+            results.append((pair[0],pair[1]))
+        logging.info("Number of results %d",len(results))
+        write_to_file(results,'result_rnn.submit.txt')
+
+
+        # h = np.histogram(scores, bins='auto')
+        # plt.hist(h)
+        # plt.show()
+
+
+
 
 if __name__ == '__main__':
     e = EventRNN()
     e.setup()
-    e.loadCandidates()
-    e.computeCandidateScores()
-    dictToFileNormal(e.candidate_scores, 'rnn_scores.json.gz')
+    e.create_train_sets()
+    e.fit()
+    # e.loadCandidates()
+    # e.computeCandidateScores()
+    # with open('candidate_scores.pkl','w+') as f:
+    #     pickle.dump(e.candidate_scores, f)
+    # dictToFileNormal(e.candidate_scores, 'rnn_scores.json.gz')
+    # logging.info("Finished!")
 
+    # e.generatePredictions(SUBMIT_FULL/2)
 
