@@ -346,6 +346,18 @@ def extend_pairs(pairs):
 
 	return new_pairs
 
+def get_top_pair_for_submit(pairs):
+	p_set = set()
+	p_lst = []
+	c = 0
+	for p in pairs:
+		if (p[0],p[1]) not in p_set:
+			p_set.add((p[0],p[1]))
+			p_lst.append((p[0],p[1]))
+			c+=1
+			if c==215307:
+				break
+	return p_lst
 
 '''
 Setting up XG Boost
@@ -638,20 +650,9 @@ for p in XGB1_results[:TOP_PAIRS_NB]:
 			r[ru] = rv
 
 print "Final results: given {} pairs, extend to {} pairs".format(TOP_PAIRS_NB, len(XGB2_ext_pairs))
-
+print "new_extended pairs {}".format(len(set(get_top_pair_for_submit(XGB2_ext_pairs+XGB1_results))-set([(p[0],p[1]) for p in XGB1_results[:215307]])))
 
 '''
 Merge XGB2 ext_pairs on top of XGB1 predictions 
 '''
-
-p_set = set()
-p_lst = []
-c = 0
-for p in XGB2_ext_pairs+XGB1_results:
-	if (p[0],p[1]) not in p_set:
-		p_set.add((p[0],p[1]))
-		p_lst.append((p[0],p[1]))
-		c+=1
-		if c==215307:
-			break
-write_to_file(p_lst, 'result_ordered.with-inference.submit.txt')
+write_to_file(get_top_pair_for_submit(XGB2_ext_pairs+XGB1_results), 'result_ordered.with-inference.submit.txt')
