@@ -1,5 +1,5 @@
 import os
-os.environ["THEANO_FLAGS"] = "mode=FAST_RUN,device=cpu,floatX=float32"
+# os.environ["THEANO_FLAGS"] = "mode=FAST_RUN,device=cpu,floatX=float32"
 from collections import defaultdict
 import string
 import json
@@ -11,7 +11,7 @@ from gensim.models import Doc2Vec
 import math
 import pandas as pd
 from keras.models import Sequential
-from keras.layers import Dense
+from keras.layers import Dense, Activation, Dropout
 from keras.wrappers.scikit_learn import KerasClassifier
 from sklearn.cross_validation import cross_val_score
 from sklearn.preprocessing import LabelEncoder
@@ -136,7 +136,6 @@ def extract_feature_for_pair_users(uid1, uid2):
 	click_count_day_time_normalized = f1['click_count_day_time_normalized'].tolist() + f2['click_count_day_time_normalized'].tolist()
 	features+= click_count_day_time_normalized
 
-	
 	# remove=> increase P but reduce R abit, f1 increaes abit
 	# features.append(click_distribution_similarity(cc_dt_n1, cc_dt_n2))
 	# features.append(click_distribution_similarity(cc_t_n1, cc_t_n2))
@@ -185,11 +184,17 @@ def extract_feature_for_pair_users(uid1, uid2):
 		v1 = doc2vec_model_h2.docvecs['USER_'+str(uid1)]
 		v2 = doc2vec_model_h2.docvecs['USER_'+str(uid2)]
 		cos = 1 - spatial.distance.cosine(v1, v2)
+		vecs = []
+		vecs += v1
+		vecs += v2
 	except:
+		vecs = np.zeros(300).tolist()
 		cos = -1
 		pass
 
+	features += vecs
 	features.append(cos)
+
 
 	#------------Doc2vec Higher Level x 3------------------------------#
 	try:
@@ -228,7 +233,6 @@ def extract_feature_for_pair_users(uid1, uid2):
 		pass
 
 	features.append(cos)
-
 	'''
 	Using feature index is optional
 	'''
@@ -260,7 +264,7 @@ def extract_feature_for_pair_users(uid1, uid2):
 models=['candidates/candidate_pairs.baseline.nn.100.train-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
 #'candidates/candidate_pairs.nn.100.train-100k.word2vec.json.gz']
 
-nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in models]
+nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),10) for m in models]
 order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
 
 nn_pairs= []
@@ -318,6 +322,7 @@ Y = [e[2] for e in samples_train]
 XX = [e[3:] for e in samples_test]
 YY = [e[2] for e in samples_test]
 
+
 # print("Loading Exp bundle..")
 
 # import cPickle as pickle
@@ -338,6 +343,8 @@ Y = np.array(Y)
 XX = np.array(XX)
 YY = np.array(YY)
 
+print(X.shape)
+
 '''
 Run Keras MLP
 '''
@@ -347,13 +354,26 @@ print("Training MLP..")
 # TY:Change to None, Del in Python doesn't do anything I believe
 samples_train = None
 
-# baseline model
-def create_baseline():
-	# create model
+# # baseline model
+# def create_baseline():
+# 	# create model
+# 	model = Sequential()
+# 	model.add(Dense(10, init='normal', activation='relu'))
+# 	model.add(Dense(1, init='normal', activation='sigmoid'))
+# 	# Compile model
+# 	model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+# 	return model
+
+def create_large_mlp():
 	model = Sequential()
-	model.add(Dense(10, input_dim=X.shape[1], init='normal', activation='relu'))
-	model.add(Dense(1, init='normal', activation='sigmoid'))
-	# Compile model
+	model.add(Dense(512, input_dim=X.shape[1]))
+	model.add(Activation('relu'))
+	model.add(Dropout(0.2))
+	model.add(Dense(512))
+	model.add(Activation('relu'))
+	model.add(Dropout(0.2))
+	model.add(Dense(1))
+	model.add(Activation('sigmoid'))
 	model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 	return model
 
@@ -365,9 +385,9 @@ def create_baseline():
 
 # encoded_YY = encoder.transform(YY)
 
-model = create_baseline()
+# model = create_large_mlp()
 
-mdl = KerasClassifier(build_fn=create_baseline, nb_epoch=1, batch_size=128, verbose=1)
+mdl = KerasClassifier(build_fn=create_large_mlp, nb_epoch=500, batch_size=128, verbose=1)
 mdl.fit(X, Y)
 YY_result = mdl.predict(XX)
 
@@ -420,8 +440,8 @@ nn_pairs = filter_nn_pairs(nn_pairs)
 random.shuffle(nn_pairs)
 
 
-from multiprocessing.pool import ThreadPool
-pool = ThreadPool(20)
+# from multiprocessing.pool import ThreadPool
+# pool = ThreadPool(20)
 
 
 def get_features_for_samples_test(sample_pairs):

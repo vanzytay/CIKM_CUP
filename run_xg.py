@@ -331,7 +331,7 @@ First XG Boost is to predict top pairs from the knn candidates
 
 train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
 
-nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in train_candidate_sets]
+nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),5) for m in train_candidate_sets]
 order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
 
 # Build the train and test data xgb1	
@@ -430,7 +430,6 @@ print "Golden_count={}; Predict_count={}".format(sum(YY), sum(YY_result))
 # print "R[class-1] = {}".format(recall_score(Y, Y_result, pos_label=1, average='binary'))
 # print "F1[class-1] = {}".format(f1_score(Y, Y_result, pos_label=1, average='binary'))
 # print "Golden_count={}; Predict_count={}".format(sum(Y), sum(Y_result))
-
 
 
 '''

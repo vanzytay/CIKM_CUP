@@ -398,11 +398,11 @@ if __name__ == '__main__':
     e.maxlen = 200
     if(args.mode=='predict'):
         # Prediction Mode using CPU
-        # e._create_model(weight_path = 'models/GRU_max.h5')
-        # e.loadCandidates()
-        # e.computeCandidateScores()
-        # with open('candidate_scores_max.pkl','w+') as f:
-        #     pickle.dump(e.candidate_scores, f)
+        e._create_model(weight_path = 'models/GRU_10k.h5')
+        e.loadCandidates()
+        e.computeCandidateScores()
+        with open('candidate_scores_10k.pkl','w+') as f:
+            pickle.dump(e.candidate_scores, f)
         e.generatePredictions(SUBMIT_FULL)
     elif(args.mode=='train'):
         e.create_train_sets(limit=10000)

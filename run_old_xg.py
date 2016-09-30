@@ -247,7 +247,7 @@ def extract_feature_for_pair_users(uid1, uid2):
 models=['candidates/candidate_pairs.baseline.nn.100.train-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
 #'candidates/candidate_pairs.nn.100.train-100k.word2vec.json.gz']
 
-nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in models]
+nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),5) for m in models]
 order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
 
 nn_pairs= []
