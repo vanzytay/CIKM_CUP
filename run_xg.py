@@ -269,19 +269,42 @@ def evaluate_on_test_100k(results):
 	Evaluate on test_100k.csv
 	'''
 	golden_edges = set()
+	au = set()
 	with open('test_100k.csv','r') as f:
 		for line in f:
 			uid1, uid2 = line.strip().split(',')
 			golden_edges.add((min(uid1, uid2),max(uid1, uid2)))
-
+			au.update([uid1,uid2])
+	print len(au)
+	golden_edges_lst = list(golden_edges)
+	random.shuffle(golden_edges_lst)
+	golden_edges_half = set(golden_edges_lst[:int(len(golden_edges)/2)])
+	t_p = 0
+	count = 0
+	for pair in results:
+		if (pair[0],pair[1]) in golden_edges_half:
+			t_p+=1
+		count += 1
+	pre = float(t_p)/count
+	re = float(t_p)/len(golden_edges_half)
+	print
+	print "50%-pairs"
+	print "P@{} = {}".format(count, pre)
+	print "R@{} = {}".format(count, re)
+	print "F1@{} = {}".format(count, 2*pre*re/(pre+re))
 	t_p = 0
 	count = 0
 	for pair in results:
 		if (pair[0],pair[1]) in golden_edges:
 			t_p+=1
 		count += 1
-	print "P@{} = {}".format(count, float(t_p)/count)
-	print "R@{} = {}".format(count, float(t_p)/len(golden_edges))
+	pre = float(t_p)/count
+	re = float(t_p)/len(golden_edges)
+	print
+	print "Full-pairs"
+	print "P@{} = {}".format(count, pre)
+	print "R@{} = {}".format(count, re)
+	print "F1@{} = {}".format(count, 2*pre*re/(pre+re))
 
 
 def extend_pairs(pairs):
@@ -323,6 +346,18 @@ def extend_pairs(pairs):
 
 	return new_pairs
 
+def get_top_pair_for_submit(pairs):
+	p_set = set()
+	p_lst = []
+	c = 0
+	for p in pairs:
+		if (p[0],p[1]) not in p_set:
+			p_set.add((p[0],p[1]))
+			p_lst.append((p[0],p[1]))
+			c+=1
+			if c==215307:
+				break
+	return p_lst
 
 '''
 Setting up XG Boost
@@ -437,7 +472,7 @@ Build second Random Forest
 Training pairs will be the top 50000 pairs from the last step and the pairs extended from them
 '''
 
-TOP_PAIRS_NB = 60000
+TOP_PAIRS_NB = 50000
 dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
 ]#'candidates/candidate_pairs.nn.100.test-100k.word2vec.json.gz']
 
@@ -511,7 +546,7 @@ results = predict_by_rf(xgb1, dev_candidates_sets, False, None)
 
 # If you don't use the inference part. Can ouput the results here. Note that the current results is for test_100k candidates file. 
 
-evaluate_on_test_100k(results[:TOP_PAIRS_NB])
+evaluate_on_test_100k(results[:95000])
 evaluate_on_test_100k(results[:190000])
 
 # Extend top 50k pairs
@@ -567,6 +602,8 @@ test_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.test.with-order
 
 XGB1_results = predict_by_rf(xgb1, test_candidate_sets, False, None)
 
+write_to_file(XGB1_results[:215307], 'result_ordered.submit.txt')
+
 ext_pairs = extend_pairs(XGB1_results[:TOP_PAIRS_NB])
 print "Number of extended pairs {}".format(len(ext_pairs))
 
@@ -612,20 +649,9 @@ for p in XGB1_results[:TOP_PAIRS_NB]:
 			r[ru] = rv
 
 print "Final results: given {} pairs, extend to {} pairs".format(TOP_PAIRS_NB, len(XGB2_ext_pairs))
-
+print "new_extended pairs {}".format(len(set(get_top_pair_for_submit(XGB2_ext_pairs+XGB1_results))-set([(p[0],p[1]) for p in XGB1_results[:215307]])))
 
 '''
 Merge XGB2 ext_pairs on top of XGB1 predictions 
 '''
-
-p_set = set()
-p_lst = []
-c = 0
-for p in XGB2_ext_pairs+XGB1_results:
-	if (p[0],p[1]) not in p_set:
-		p_set.add((p[0],p[1]))
-		p_lst.append((p[0],p[1]))
-		c+=1
-		if c==215307:
-			break
-write_to_file(p_lst, 'result_ordered.submit.txt')
+write_to_file(get_top_pair_for_submit(XGB2_ext_pairs+XGB1_results), 'result_ordered.with-inference.submit.txt')
