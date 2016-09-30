@@ -385,26 +385,32 @@ YY = [e[2] for e in samples_test]
 
 # Train xgb1
 
-timer = ProgressBar(title="Running XG Boost")
+timer = ProgressBar(title="Running Random FOrests")
 
 samples_train = None
 
-xgb1 = XGBClassifier(
- learning_rate =0.01,
- n_estimators=2500,
- max_depth=5,
- min_child_weight=1,
- gamma=0,
- subsample=0.8,
- colsample_bytree=0.8,
- objective= 'binary:logistic',
- nthread=20,
- reg_alpha=0.005,
- scale_pos_weight=1,
- seed=27)
+from sklearn.ensemble import RandomForestClassifier
+
+# TY:Change to None, Del in Python doesn't do anything I believe
+samples_train = None
+xgb1 = RandomForestClassifier(n_estimators=1000, n_jobs=20)
+
+# xgb1 = XGBClassifier(
+#  learning_rate =0.01,
+#  n_estimators=2500,
+#  max_depth=5,
+#  min_child_weight=1,
+#  gamma=0,
+#  subsample=0.8,
+#  colsample_bytree=0.8,
+#  objective= 'binary:logistic',
+#  nthread=20,
+#  reg_alpha=0.005,
+#  scale_pos_weight=1,
+#  seed=27)
 
 # modelfit(xgb1, np.array(X), np.array(Y), feature_index=feature_index)
-print("Fitting XGB[1]")
+print("Fitting RF[1]")
 xgb1.fit(np.array(X),np.array(Y), verbose=True)
 
 
@@ -534,20 +540,20 @@ print "Given {} pairs, extend to {} pairs ({} positive pairs)".format(TOP_PAIRS_
 
 xgb2 = XGBClassifier(
  learning_rate =0.01,
- n_estimators=3000,
+ n_estimators=2500,
  max_depth=5,
  min_child_weight=1,
  gamma=0,
  subsample=0.8,
  colsample_bytree=0.8,
  objective= 'binary:logistic',
- nthread=20,
+ nthread=8,
  reg_alpha=0.005,
  scale_pos_weight=1,
  seed=27)
 
 print("Fitting XGB[2]")
-xgb2.fit(np.array(X),np.array(Y), verbose=True)
+xgb2.fit(np.array(X), np.array(Y), verbose=True)
 
 # XGB2_model = RandomForestClassifier(n_estimators=200, n_jobs=-1)
 # scores = cross_validation.cross_val_score(XGB2_model, X, Y, cv=5)
@@ -575,6 +581,7 @@ print "Number of extended pairs {}".format(len(ext_pairs))
 results_ext_scores = defaultdict(float)
 for _ in predict_by_rf(xgb2, test_candidate_sets, False, nn_pairs=ext_pairs):
 	results_ext_scores[(_[0],_[1])] = _[2]
+
 
 # Hierarchical merging
 

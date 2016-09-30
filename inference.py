@@ -5,7 +5,7 @@ Script to do inference
 from __future__ import division
 
 SUBMIT_FULL = 215307
-SUBMIT_FULL = int(0.6 * SUBMIT_FULL) 
+# SUBMIT_FULL = int(0.6 * SUBMIT_FULL) 
 TOP_50 = int(0.5 * SUBMIT_FULL)
 TOP_25 = int(0.25 * SUBMIT_FULL)
 TOP_33 = int(0.33 * SUBMIT_FULL)
@@ -21,17 +21,19 @@ map2 = {}
 users = []
 full_pairs = []
 
-with open('result_ordered.submit.txt','r') as f:
+target_file = './history/ensemble/submission.txt'
+
+with open(target_file,'r') as f:
 	for index, line in enumerate(f):
 		pair = line.strip().split(',')
 		full_pairs.append(tuple(pair))
 		users.append(pair[0])
 		users.append(pair[1])
 
-with open('result_ordered.submit.txt','r') as f:
+with open(target_file,'r') as f:
 	for index, line in enumerate(f):
-		if(index>TOP_80):
-			break
+		# if(index>TOP_80):
+		# 	break
 		pair = line.strip().split(',')
 		pairs.append(tuple(pair))
 		if(pair[0] not in map1):
@@ -96,8 +98,6 @@ for u in users:
 	# 				_pair = tuple([n,u])
 	# 			infer_pairs.append(_pair)
 
-	
-
 print(len(infer_pairs))
 infer_pairs = list(set(infer_pairs))
 print(len(infer_pairs))
@@ -110,11 +110,11 @@ print(len(infer_pairs))
 infer_pairs = list(set(pairs) - set(infer_pairs))
 print("Removing overlap : length of infer pairs = %d", len(infer_pairs))
 num_infer = len(infer_pairs)
-num_to_take = SUBMIT_FULL 
+num_to_take = SUBMIT_FULL - len(list(set(pairs)))
 
-print("Number of take from original pairs %d",num_to_take)
+print("Number of take from infer pairs %d", num_to_take)
 print(len(infer_pairs))
-all_pairs = full_pairs[:num_to_take] + infer_pairs
+all_pairs = full_pairs + infer_pairs[:num_to_take]
 print("Num all pairs %d",len(all_pairs))
 
 reverse_pairs = []
@@ -136,7 +136,7 @@ for p in all_pairs:
 	if(p[0] in map_check1[p[1]]):
 		logging.warn("Duplicated")
 
-with open('results_inferred.txt','w+') as f_out:
+with open('./history/ensemble_inference/submission.txt','w+') as f_out:
 	for r in all_pairs:
 		f_out.write("{},{}\n".format(r[0],r[1]))
 
