@@ -438,7 +438,7 @@ Build second Random Forest
 Training pairs will be the top 50000 pairs from the last step and the pairs extended from them
 '''
 
-TOP_PAIRS_NB = 60000
+TOP_PAIRS_NB = 50000
 dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
 ]#'candidates/candidate_pairs.nn.100.test-100k.word2vec.json.gz']
 
