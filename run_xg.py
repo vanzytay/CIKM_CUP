@@ -269,19 +269,42 @@ def evaluate_on_test_100k(results):
 	Evaluate on test_100k.csv
 	'''
 	golden_edges = set()
+	au = set()
 	with open('test_100k.csv','r') as f:
 		for line in f:
 			uid1, uid2 = line.strip().split(',')
 			golden_edges.add((min(uid1, uid2),max(uid1, uid2)))
-
+			au.update([uid1,uid2])
+	print len(au)
+	golden_edges_lst = list(golden_edges)
+	random.shuffle(golden_edges_lst)
+	golden_edges_half = set(golden_edges_lst[:int(len(golden_edges)/2)])
+	t_p = 0
+	count = 0
+	for pair in results:
+		if (pair[0],pair[1]) in golden_edges_half:
+			t_p+=1
+		count += 1
+	pre = float(t_p)/count
+	re = float(t_p)/len(golden_edges_half)
+	print
+	print "50%-pairs"
+	print "P@{} = {}".format(count, pre)
+	print "R@{} = {}".format(count, re)
+	print "F1@{} = {}".format(count, 2*pre*re/(pre+re))
 	t_p = 0
 	count = 0
 	for pair in results:
 		if (pair[0],pair[1]) in golden_edges:
 			t_p+=1
 		count += 1
-	print "P@{} = {}".format(count, float(t_p)/count)
-	print "R@{} = {}".format(count, float(t_p)/len(golden_edges))
+	pre = float(t_p)/count
+	re = float(t_p)/len(golden_edges)
+	print
+	print "Full-pairs"
+	print "P@{} = {}".format(count, pre)
+	print "R@{} = {}".format(count, re)
+	print "F1@{} = {}".format(count, 2*pre*re/(pre+re))
 
 
 def extend_pairs(pairs):
@@ -512,7 +535,7 @@ results = predict_by_rf(xgb1, dev_candidates_sets, False, None)
 
 # If you don't use the inference part. Can ouput the results here. Note that the current results is for test_100k candidates file. 
 
-evaluate_on_test_100k(results[:TOP_PAIRS_NB])
+evaluate_on_test_100k(results[:95000])
 evaluate_on_test_100k(results[:190000])
 
 # Extend top 50k pairs
@@ -567,6 +590,8 @@ test_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.test.with-order
 ]
 
 XGB1_results = predict_by_rf(xgb1, test_candidate_sets, False, None)
+
+write_to_file(XGB1_results[:215307], 'result_ordered.submit.txt')
 
 ext_pairs = extend_pairs(XGB1_results[:TOP_PAIRS_NB])
 print "Number of extended pairs {}".format(len(ext_pairs))
@@ -629,4 +654,4 @@ for p in XGB2_ext_pairs+XGB1_results:
 		c+=1
 		if c==215307:
 			break
-write_to_file(p_lst, 'result_ordered.submit.txt')
+write_to_file(p_lst, 'result_ordered.with-inference.submit.txt')
