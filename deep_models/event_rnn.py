@@ -3,8 +3,9 @@
 Cross-Device Entity Linking Challenge
 Event-based RNN to predict user given a sequence of events
 '''
-
 from __future__ import print_function
+import os
+# os.environ["THEANO_FLAGS"] = "mode=FAST_RUN,device=cpu,floatX=float32"
 from keras.models import Sequential
 from keras.layers import Dense, Activation, Dropout, Merge
 from keras.layers import LSTM, Bidirectional, GRU
@@ -41,6 +42,11 @@ def write_to_file(results, filename):
         for r in results:
             f.write("{},{}\n".format(r[0],r[1]))
 
+def write_score_to_file(results, filename):
+    # Save scores
+    with open(filename,'w') as f:
+        for r in results:
+            f.write("{},{},{}\n".format(r[0],r[1],r[2]))
 
 class EventRNN:
     """ Event Recurrent Neural Network 
@@ -172,7 +178,7 @@ class EventRNN:
         self.indices_url = dict((i, c) for i, c in enumerate(self.url_index))
         
 
-    def _create_model(self):
+    def _create_model(self, weight_path=None):
         """ Creates a dual-GRU
         """
         EMBED_HIDDEN_SIZE = 128
@@ -200,10 +206,12 @@ class EventRNN:
         model.add(Activation('sigmoid'))
         model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
         self.model = model
+        if(weight_path is not None):
+            self._load_weights(weight_path)
         return model
 
 
-    def create_train_sets(self, verbose=1):
+    def create_train_sets(self, limit=None, verbose=1):
 
         # Initialize
         X1,X2 = [],[]
@@ -228,6 +236,11 @@ class EventRNN:
         #         new_pair = (pair[0],other_pair[1])
         #         corrupt_set.append(new_pair)
 
+        if(limit is not None):
+            random.shuffle(self.train_set)
+            # random.shuffle(self.test_set)
+            self.train_set = self.train_set[:limit]
+            # self.test_set = self.test_set[:limit]
         logging.info('Train Set:%d | Test Set:%d',len(self.train_set),len(self.test_set))
         seq_lens = []
         for index, pair in enumerate(self.train_set):
@@ -288,14 +301,28 @@ class EventRNN:
 
         self._create_model()
 
-    def fit(self):
+    def fit(self, compact=True):
         logging.info("Starting training of Event RNN!")
+        if(compact):
+            self._compact()
         for i in range(0,100):
             self.model.fit([self.X1,self.X2],self.Y, nb_epoch=1, batch_size=16, verbose=1)
             if(i % 10==0):
                 scores = self.model.evaluate([self.X1_test,self.X2_test], self.Y_test, verbose=1)
-            self.model.save_weights('models/GRU_max.h5', overwrite=True)
+                logging.info(scores)
+            self.model.save_weights('models/GRU_10k.h5', overwrite=True)
 
+    def _compact(self):
+        ''' save memory while training RNN
+        '''
+        logging.info("Removing index to save space while training..")
+        self.env = None
+        self.user_logs = None
+        self.url_index = None
+        self.user_indices = None
+        self.url_indices = None
+        self.indices_url = None
+        
     def loadCandidates(self):
         """ Calculate scores for candidate pairs
         """
@@ -309,15 +336,14 @@ class EventRNN:
         self.candidates = nn_pairs
         logging.info("Loaded %d candidates",len(self.candidates))
 
-    def _load_weights(self):
-        self.model.load_weights('models/GRU1.h5')
+    def _load_weights(self, weight_path):
+        self.model.load_weights(weight_path)
         logging.info("Loaded weights!")
 
     def computeCandidateScores(self):
         """ Computes scores for candidate pairs
         """
         self.candidate_scores = {}
-        self._load_weights()
         X1, X2 = [], []
         for pair in tqdm(self.candidates):
             user1_seq = self.user_logs[pair[0]]
@@ -328,7 +354,8 @@ class EventRNN:
         X2 = np.array(X2)
         _x1 = sequence.pad_sequences(X1, maxlen=self.maxlen)
         _x2 = sequence.pad_sequences(X2, maxlen=self.maxlen)
-        proba = self.model.predict_proba([_x1,_x2])
+        logging.info("Predicting probability now...")
+        proba = self.model.predict_proba([_x1,_x2], batch_size=512)
         for index,p in tqdm(enumerate(proba)):
             logging.info(p)
             self.candidate_scores[tuple(self.candidates[index])] = p[0]
@@ -336,7 +363,6 @@ class EventRNN:
     def generatePredictions(self, k):
         """ Generates top-k predictions from candidates
         """
-        import matplotlib.pyplot as plt
         import operator
         with open('candidate_scores.pkl','r') as f:
             self.candidate_scores = pickle.load(f)
@@ -350,29 +376,38 @@ class EventRNN:
         logging.info(np.max(scores))
         logging.info(np.min(scores))
         results = []
+        results_score = []
         for data in sorted_x[:k]:
             pair = data[0]
             results.append((pair[0],pair[1]))
+            results_score.append((pair[0],pair[1],data[1]))
         logging.info("Number of results %d",len(results))
-        write_to_file(results,'result_rnn.submit.txt')
-
-
-        # h = np.histogram(scores, bins='auto')
-        # plt.hist(h)
-        # plt.show()
-
-
+        write_to_file(results,'result_rnn_1.txt')
+        write_score_to_file(results_score,'results_rnn_1_scores.txt')
 
 
 if __name__ == '__main__':
+    # Set up args parser
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-m", "--mode", type=str,
+                    help="the main functionality")
+    args = parser.parse_args()
     e = EventRNN()
     e.setup()
-    e.create_train_sets()
-    e.fit()
-    # e.loadCandidates()
-    # e.computeCandidateScores()
-    # with open('candidate_scores.pkl','w+') as f:
-    #     pickle.dump(e.candidate_scores, f)
+    e.maxlen = 200
+    if(args.mode=='predict'):
+        # Prediction Mode using CPU
+        # e._create_model(weight_path = 'models/GRU_max.h5')
+        # e.loadCandidates()
+        # e.computeCandidateScores()
+        # with open('candidate_scores_max.pkl','w+') as f:
+        #     pickle.dump(e.candidate_scores, f)
+        e.generatePredictions(SUBMIT_FULL)
+    elif(args.mode=='train'):
+        e.create_train_sets(limit=10000)
+        e.fit()
+  
     # dictToFileNormal(e.candidate_scores, 'rnn_scores.json.gz')
     # logging.info("Finished!")
 

@@ -3,6 +3,11 @@
 Script to do inference
 '''
 from __future__ import division
+import logging
+
+# Setup logger
+logger = logging.getLogger()
+logging.basicConfig(level=logging.DEBUG)
 
 SUBMIT_FULL = 215307
 # SUBMIT_FULL = int(0.6 * SUBMIT_FULL) 
@@ -21,11 +26,13 @@ map2 = {}
 users = []
 full_pairs = []
 
-target_file = './history/ensemble/submission.txt'
+target_file = './ensemble/final/submission_scores.txt'
 
 with open(target_file,'r') as f:
 	for index, line in enumerate(f):
 		pair = line.strip().split(',')
+		if(float(pair[2])<0.8):
+			continue
 		full_pairs.append(tuple(pair))
 		users.append(pair[0])
 		users.append(pair[1])
@@ -35,6 +42,8 @@ with open(target_file,'r') as f:
 		# if(index>TOP_80):
 		# 	break
 		pair = line.strip().split(',')
+		if(float(pair[2])<0.8):
+			continue
 		pairs.append(tuple(pair))
 		if(pair[0] not in map1):
 			map1[pair[0]] = [pair[1]]
@@ -49,7 +58,7 @@ with open(target_file,'r') as f:
 users = list(set(users))
 
 # If a->b and b->c, a->c
-print("Number of initial pairs:%d", len(pairs))
+print("Number of initial pairs:{}".format(len(full_pairs)))
 
 infer_pairs = []
 
@@ -98,43 +107,53 @@ for u in users:
 	# 				_pair = tuple([n,u])
 	# 			infer_pairs.append(_pair)
 
-print(len(infer_pairs))
+
+# Get infer pairs and remove duplicates
 infer_pairs = list(set(infer_pairs))
-print(len(infer_pairs))
+logging.info("Number of infer pairs %d",len(infer_pairs))
 
-# all_pairs = pairs + infer_pairs
-# print(len(all_pairs))
-# all_pairs = list(set(all_pairs))
-# print(len(all_pairs))
+# # Check overlap with full pairs
+# infer_pairs = list(set(full_pairs) - set(infer_pairs))
+# logging.info("Removing overlap : length of infer pairs = %d", len(infer_pairs))
 
-infer_pairs = list(set(pairs) - set(infer_pairs))
-print("Removing overlap : length of infer pairs = %d", len(infer_pairs))
-num_infer = len(infer_pairs)
-num_to_take = SUBMIT_FULL - len(list(set(pairs)))
+all_pairs = list(set(full_pairs))
 
-print("Number of take from infer pairs %d", num_to_take)
-print(len(infer_pairs))
-all_pairs = full_pairs + infer_pairs[:num_to_take]
-print("Num all pairs %d",len(all_pairs))
+i=0
 
-reverse_pairs = []
 
-map_check1 = {user:[] for user in users}
-map_check2 = {user:[] for user in users}
+while(len(all_pairs)<SUBMIT_FULL):
+	if(i>=len(infer_pairs)):
+		break
+	all_pairs.append(infer_pairs[i])
+	i+=1
+
+
+
+# map_check1 = {user:[] for user in users}
+# map_check2 = {user:[] for user in users}
+
+# for p in all_pairs:
+# 	if(p[0]>p[1]):
+# 		logging.warn("Pairs not in order")
+# 	map_check1[p[0]] += [p[1]]
+# 	map_check2[p[1]] += [p[0]]
+
+print("length of all pairs:" + str(len(all_pairs)))
+# all_pairs = [tuple(x) for x in all_pairs]
+all_pairs = list(set(all_pairs))
+print("length of all pairs:" + str(len(all_pairs)))
 
 for p in all_pairs:
-	if(p[0]>p[1]):
-		logging.warn("Pairs not in order")
-	map_check1[p[0]] += [p[1]]
-	map_check2[p[1]] += [p[0]]
+	if(p[1]<p[0]):
+		print("Pairs not in orders")
 
-print("Checking for duplicates...")
-for p in all_pairs:
-	if(p[1] in map_check2[p[0]]):
-		logging.warn("Duplicated!")
+# print("Checking for duplicates...")
+# for p in all_pairs:
+# 	if(p[1] in map_check2[p[0]]):
+# 		logging.warn("Duplicated!")
 
-	if(p[0] in map_check1[p[1]]):
-		logging.warn("Duplicated")
+# 	if(p[0] in map_check1[p[1]]):
+# 		logging.warn("Duplicated")
 
 with open('./history/ensemble_inference/submission.txt','w+') as f_out:
 	for r in all_pairs:

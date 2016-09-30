@@ -243,98 +243,12 @@ def extract_feature_for_pair_users(uid1, uid2):
 	# features+=get_time_overalap(uid1,uid2,60,[1,5,10,30])
 	return features 
 
-def get_features_for_samples(sample_pairs, golden_edges):
-	samples = []
-	for pair in sample_pairs:
-		# !!! duplication
-		uid1,uid2 = pair[0], pair[1]
-		samples.append([uid1,uid2,int((min(uid1,uid2),max(uid1,uid2)) in golden_edges)] + extract_feature_for_pair_users(uid1,uid2))
-	return samples
 
-def get_features_for_samples_test(sample_pairs):
-	samples = []
-	for pair in sample_pairs:
-		uid1,uid2 = pair[0], pair[1]
-		samples.append(extract_feature_for_pair_users(uid1,uid2))
-	return samples
+models=['candidates/candidate_pairs.baseline.nn.100.train-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
+#'candidates/candidate_pairs.nn.100.train-100k.word2vec.json.gz']
 
-def write_to_file(results, filename):
-	with open(filename,'w') as f:
-		for _ in results:
-			f.write("{},{}\n".format(_[0],_[1]))
-
-
-def evaluate_on_test_100k(results):
-	'''
-	Evaluate on test_100k.csv
-	'''
-	golden_edges = set()
-	with open('test_100k.csv','r') as f:
-		for line in f:
-			uid1, uid2 = line.strip().split(',')
-			golden_edges.add((min(uid1, uid2),max(uid1, uid2)))
-
-	t_p = 0
-	count = 0
-	for pair in results:
-		if (pair[0],pair[1]) in golden_edges:
-			t_p+=1
-		count += 1
-	print "P@{} = {}".format(count, float(t_p)/count)
-	print "R@{} = {}".format(count, float(t_p)/len(golden_edges))
-
-
-def extend_pairs(pairs):
-	'''
-	Extend pairs by merging 2 cluster. In other words, making pair u,v if u,v is in a connected component
-	'''
-	all_vertexs = set([p[0] for p in pairs] + [p[1] for p in pairs])
-	edges = set([(p[0],p[1]) for p in pairs])
-
-	r = {}
-	for v in all_vertexs:
-		r[v] = -1
-
-	def get_root(u,r):
-		while r[u]!=-1:
-			u = r[u]
-		return u
-
-	for pair in pairs:
-		u,v = pair[0], pair[1]
-		ru = get_root(u,r)
-		rv = get_root(v,r)
-		if ru!=rv:
-			r[ru] = rv
-
-	cluster = {}
-	for v in all_vertexs:
-		try:
-			cluster[get_root(v,r)].add(v)
-		except:
-			cluster[get_root(v,r)] = set([v])
-
-	new_pairs = []
-	for cid in cluster.keys():
-		for u in cluster[cid]:
-			for v in cluster[cid]:
-				if u<v:# and (u,v) not in edges:
-					new_pairs.append((u,v))
-
-	return new_pairs
-
-
-'''
-Setting up XG Boost
-First XG Boost is to predict top pairs from the knn candidates
-'''
-
-train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
-
-nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in train_candidate_sets]
+nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in models]
 order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
-
-# Build the train and test data xgb1	
 
 nn_pairs= []
 for ps in nn_pairs_lst:
@@ -376,46 +290,60 @@ random.shuffle(sample_pairs_train)
 
 del nn_pairs
 
-samples_train = get_features_for_samples(sample_pairs_train, golden_edges)
-samples_test = get_features_for_samples(sample_pairs_test, golden_edges)
+def get_features_for_samples(sample_pairs):
+	samples = []
+	for pair in sample_pairs:
+		# !!! duplication
+		uid1,uid2 = pair[0], pair[1]
+		samples.append([uid1,uid2,int((min(uid1,uid2),max(uid1,uid2)) in golden_edges)] + extract_feature_for_pair_users(uid1,uid2))
+	return samples
+
+samples_train = get_features_for_samples(sample_pairs_train)
+samples_test = get_features_for_samples(sample_pairs_test)
 X = [e[3:] for e in samples_train]
 Y = [e[2] for e in samples_train]
 XX = [e[3:] for e in samples_test]
 YY = [e[2] for e in samples_test]
 
-# Train xgb1
+exp_bundle = {
+	'samples_train':samples_train,
+	'samples_test':samples_test
+}
 
-timer = ProgressBar(title="Running Random FOrests")
+# Use this for saving features for fast access
+import sys
+print("Dumping features")
+import cPickle as pickle
+with open('exp_bundle.pkl','w+') as f:
+	pickle.dump(exp_bundle, f)
+print("Finished dumping features...")
+sys.exit()
+
+'''
+Setting up XG Boost
+'''
+timer = ProgressBar(title="Running XG Boost")
 
 samples_train = None
 
-from sklearn.ensemble import RandomForestClassifier
+xgb1 = XGBClassifier(
+ learning_rate =0.01,
+ n_estimators=4000,
+ max_depth=5,
+ min_child_weight=1,
+ gamma=0,
+ subsample=0.8,
+ colsample_bytree=0.8,
+ objective= 'binary:logistic',
+ nthread=20,
+ reg_alpha=0.005,
+ scale_pos_weight=1,
+ seed=27)
 
-# TY:Change to None, Del in Python doesn't do anything I believe
-samples_train = None
-xgb1 = RandomForestClassifier(n_estimators=1000, n_jobs=20)
-
-# xgb1 = XGBClassifier(
-#  learning_rate =0.01,
-#  n_estimators=2500,
-#  max_depth=5,
-#  min_child_weight=1,
-#  gamma=0,
-#  subsample=0.8,
-#  colsample_bytree=0.8,
-#  objective= 'binary:logistic',
-#  nthread=20,
-#  reg_alpha=0.005,
-#  scale_pos_weight=1,
-#  seed=27)
 
 # modelfit(xgb1, np.array(X), np.array(Y), feature_index=feature_index)
-print("Fitting RF[1]")
+print("Fitting XGB[1]")
 xgb1.fit(np.array(X),np.array(Y), verbose=True)
-
-
-# Evaluate xgb1
-
 from sklearn.metrics import precision_score
 from sklearn.metrics import recall_score
 from sklearn.metrics import f1_score
@@ -437,203 +365,178 @@ print "Golden_count={}; Predict_count={}".format(sum(YY), sum(YY_result))
 # print "F1[class-1] = {}".format(f1_score(Y, Y_result, pos_label=1, average='binary'))
 # print "Golden_count={}; Predict_count={}".format(sum(Y), sum(Y_result))
 
-
-
 '''
-Build second Random Forest
-Training pairs will be the top 50000 pairs from the last step and the pairs extended from them
+Predicting the real test pairs
 '''
+# models = ['candidate_pairs.baseline.nn.15.test-100k.with-orders.strict.json.gz', 
+# 'candidate_pairs.nn.15.test-100k.doc2vec.json.gz',
+# 'candidate_pairs.baseline.nn.15.test-100k.with-orders.tf-scaled.json.gz',
+# 'candidate_pairs.baseline.nn.15.train-100k.with-orders.tf-binary.strict.json.gz'
+# ]
+# models=['candidates/candidate_pairs.baseline.nn.100.test-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
+# ]#'candidates/candidate_pairs.nn.100.test-100k.word2vec.json.gz']
 
-TOP_PAIRS_NB = 60000
-dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
-]#'candidates/candidate_pairs.nn.100.test-100k.word2vec.json.gz']
+models=['candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz']
 
-def predict_by_rf(rf_model, candidates_sets, strict_mode, nn_pairs=None):
-	'''
-	Return top predictions from random forest classifier
-		 - rf_model: trained rf model
-		 - candidates_sets: list of knn file to fetch the pairs
-		 - strict_mode: if True => output only positive pairs. otherwise output by likelihood order
-		 - nn_pairs: explicit pairs for predicting. If not None => candidates_sets won't be use
-	'''
-	global nn_pairs_lst
-	global order_objs
+nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in models]
+order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
 
-	if nn_pairs==None:
-		nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in candidates_sets]
-		order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
-		nn_pairs= []
-		for ps in nn_pairs_lst:
-			nn_pairs += ps
 
-		nn_pairs = filter_nn_pairs(nn_pairs)
-		random.shuffle(nn_pairs)
+nn_pairs= []
+for ps in nn_pairs_lst:
+	nn_pairs += ps
 
-	from multiprocessing.pool import ThreadPool
-	pool = ThreadPool(20)
+nn_pairs = filter_nn_pairs(nn_pairs)
+random.shuffle(nn_pairs)
 
-	timer = ProgressBar(title="Predicting")
-	def predict(pairs):
-		timer.tick()
-		samples = get_features_for_samples_test(pairs)
-		confidences = rf_model.predict_proba(samples).tolist()
-		return [(pair[0],pair[1], confidences[i][1]) for i,pair in enumerate(pairs)]
 
-	def chunks(l, n):
-		"""Yield successive n-sized chunks from l."""
-		for i in range(0, len(l), n):
-			yield l[i:i + n]
+from multiprocessing.pool import ThreadPool
+pool = ThreadPool(20)
 
-	results_tmp = pool.map(predict, chunks(nn_pairs, 10000))
-	results_tmp = [y for x in results_tmp for y in x]
 
-	# Combine scores
-	# Take average if u,v and v,u in the candidates set
-	cs = {}
-	cs_keys = set()
-	r_ps = set()
-	for _ in results_tmp:
-		u1,u2 = min(_[0],_[1]), max(_[0],_[1])
-		if u1 not in cs_keys:
-			cs[u1] = {}
-			cs_keys.add(u1)
+def get_features_for_samples_test(sample_pairs):
+	samples = []
+	for pair in sample_pairs:
+		uid1,uid2 = pair[0], pair[1]
+		# uid2 may be the keys
 		try:
-			cs[u1][u2] = (cs[u1][u2] + _[2])/2
+			if uid1 in orders[uid2].keys():
+				order = orders[udi2][uid1]
+			else:
+				order = 100
 		except:
-			cs[u1][u2] = _[2]
-			pass
-		r_ps.add((u1,u2))
-
-	# Sort by likelihood of prediction
-	results = [(p[0],p[1],cs[p[0]][p[1]]) for p in r_ps]
-	results = sorted(results, key=lambda x: x[-1],  reverse=True)
-	timer.finish()
-
-	if strict_mode:
-		results = [_ for _ in results if _[2]>0.5]
-
-	return results
-
-results = predict_by_rf(xgb1, dev_candidates_sets, False, None)
-
-# If you don't use the inference part. Can ouput the results here. Note that the current results is for test_100k candidates file. 
-
-evaluate_on_test_100k(results[:TOP_PAIRS_NB])
-evaluate_on_test_100k(results[:190000])
-
-# Extend top 50k pairs
-
-ext_pairs = extend_pairs(results[:TOP_PAIRS_NB])
-
-# Build XGB2 on the extended pairs
-
-golden_edges = set()
-with open('test_100k.csv','r') as f:
-	for line in f:
-		uid1, uid2 = line.strip().split(',')
-		golden_edges.add((min(uid1, uid2),max(uid1, uid2)))
-
-samples_train = get_features_for_samples(ext_pairs, golden_edges)
-X = [e[3:] for e in samples_train]
-Y = [e[2] for e in samples_train]
-print "Given {} pairs, extend to {} pairs ({} positive pairs)".format(TOP_PAIRS_NB, len(ext_pairs), sum(Y))
-
-xgb2 = XGBClassifier(
- learning_rate =0.01,
- n_estimators=2500,
- max_depth=5,
- min_child_weight=1,
- gamma=0,
- subsample=0.8,
- colsample_bytree=0.8,
- objective= 'binary:logistic',
- nthread=8,
- reg_alpha=0.005,
- scale_pos_weight=1,
- seed=27)
-
-print("Fitting XGB[2]")
-xgb2.fit(np.array(X), np.array(Y), verbose=True)
-
-# XGB2_model = RandomForestClassifier(n_estimators=200, n_jobs=-1)
-# scores = cross_validation.cross_val_score(XGB2_model, X, Y, cv=5)
-# print "5-Fold score = {}".format(np.mean(scores))
-# XGB2_model.fit(X, Y)
-
-'''
-PREDICT ON REAL TEST DATA
-	1. Candidate pairs filtering by knn
-	2. Use first RF Classifier to take the top predictions
-	3. Extend pairs from the 50k top predictions. 
-	Extending approach is hirachical merning (similar to hierarchical clustering) with 
-	the help of second RF classifier to take vote where 2 cluster should be merged
-'''
-
-test_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz'
-]
-
-XGB1_results = predict_by_rf(xgb1, test_candidate_sets, False, None)
-
-ext_pairs = extend_pairs(XGB1_results[:TOP_PAIRS_NB])
-print "Number of extended pairs {}".format(len(ext_pairs))
-
-# Caching score of XGB2 prediction
-results_ext_scores = defaultdict(float)
-for _ in predict_by_rf(xgb2, test_candidate_sets, False, nn_pairs=ext_pairs):
-	results_ext_scores[(_[0],_[1])] = _[2]
+			order=100
+		samples.append(extract_feature_for_pair_users(uid1,uid2))
+	return samples
 
 
-# Hierarchical merging
-
-r = defaultdict(lambda: -1)
-
-def get_root(u,r):
-	while r[u]!=-1:
-		u = r[u]
-	return u
-
-cluster = defaultdict(set)
-for p in XGB1_results[:TOP_PAIRS_NB]:
-	cluster[p[0]] = set([p[0]])
-	cluster[p[1]] = set([p[1]])
-
-XGB2_ext_pairs = []
-timer = ProgressBar(title="Extending pairs")
-for p in XGB1_results[:TOP_PAIRS_NB]:
+timer = ProgressBar(title="Predicting")
+def predict(pairs):
 	timer.tick()
-	ru = get_root(p[0],r)
-	rv = get_root(p[1],r)
-	if ru!=rv:
-		clusters_pairs = []
-		p_count = 0
-		c_score = 0
-		for u in cluster[ru]:
-			for v in cluster[rv]:
-				p_count +=1
-				c_score += results_ext_scores[(min(u,v),max(u,v))]
-				clusters_pairs.append((min(u,v),max(u,v)))
-		confidences = float(c_score)/p_count
-		if ((confidences >= 0.3) and (len(cluster[ru]) + len(cluster[rv])<50)) or (len(cluster[ru]) + len(cluster[rv])<=3):
-			XGB2_ext_pairs += clusters_pairs
-			for u in cluster[ru]:
-				cluster[rv].add(u)
-			r[ru] = rv
+	samples = get_features_for_samples_test(pairs)
+	confidences = xgb1.predict_proba(samples).tolist()
+	# confidences2 = xgb2.predict_proba(samples).tolist()
+	return [(pair[0],pair[1],confidences[i][1]) for i, pair in enumerate(pairs)]
+	# return [(pair[0],pair[1], (confidences[i][1] + confidences2[i][1]) / 2) for i,pair in enumerate(pairs)]
 
-print "Final results: given {} pairs, extend to {} pairs".format(TOP_PAIRS_NB, len(XGB2_ext_pairs))
+def chunks(l, n):
+	"""Yield successive n-sized chunks from l."""
+	for i in range(0, len(l), n):
+		yield l[i:i + n]
+
+results_tmp = pool.map(predict, chunks(nn_pairs, 10000))
+results_tmp = [y for x in results_tmp for y in x]
+
+# Combine scores
+cs = {}
+cs_keys = set()
+r_ps = set()
+for r in results_tmp:
+	u1,u2 = min(r[0],r[1]), max(r[0],r[1])
+	if u1 not in cs_keys:
+		cs[u1] = {}
+		cs_keys.add(u1)
+	try:
+		cs[u1][u2] = (cs[u1][u2] + r[2])/2
+	except:
+		cs[u1][u2] = r[2]
+		pass
+	r_ps.add((u1,u2))
 
 
-'''
-Merge XGB2 ext_pairs on top of XGB1 predictions 
-'''
+ordered_score ={}
+for r in results_tmp:
+	ordered_score[r[0]] = []
 
-p_set = set()
-p_lst = []
-c = 0
-for p in XGB2_ext_pairs+XGB1_results:
-	if (p[0],p[1]) not in p_set:
-		p_set.add((p[0],p[1]))
-		p_lst.append((p[0],p[1]))
-		c+=1
-		if c==215307:
-			break
-write_to_file(p_lst, 'result_ordered.submit.txt')
+for r in results_tmp:
+	u1,u2 = r[0], r[1]
+	ordered_score[u1].append((u2, cs[min(u1,u2)][max(u1,u2)]))
+
+for u in ordered_score.keys():
+	ordered_score[u] = sorted(ordered_score[u], key=lambda x: x[-1],  reverse=True)	
+
+#finalize the result by layer
+output_set = set()
+results = []
+current_layer = 0
+while len(output_set)<len(r_ps):
+	# !!!
+	break
+	tmp_lst = []
+	for u1 in ordered_score.keys():
+		if current_layer < len(ordered_score[u1]):
+			u2 = ordered_score[u1][current_layer][0]
+			if (min(u1,u2),max(u1,u2)) not in output_set:
+				output_set.add((min(u1,u2),max(u1,u2)))
+				tmp_lst.append((min(u1,u2),max(u1,u2),ordered_score[u1][current_layer][1]))
+	tmp_lst = sorted(tmp_lst, key=lambda x: x[-1],  reverse=True)
+	results += tmp_lst
+	current_layer += 1
+	if current_layer==1:
+		break
+
+results_full = [(p[0],p[1],cs[p[0]][p[1]]) for p in r_ps]
+results_full = sorted(results_full, key=lambda x: x[-1],  reverse=True)
+
+for r in results_full:
+	u1,u2 = r[0], r[1]
+	if (u1,u2) not in output_set:
+		results.append((u1,u2, cs[u1][u2]))
+
+
+# results = [(p[0],p[1],cs[p[0]][p[1]]) for p in r_ps]
+# results = sorted(results, key=lambda x: x[-1],  reverse=True)
+timer.finish()
+
+# dictToFile(results, 'candidate_pairs.result.100.with-orders.json.gz')
+
+def write_to_file(results, filename):
+	with open(filename,'w') as f:
+		for r in results:
+			f.write("{},{}\n".format(r[0],r[1]))
+
+def write_score_to_file(results, filename):
+	# Save scores
+	with open(filename,'w') as f:
+		for r in results:
+			f.write("{},{},{}\n".format(r[0],r[1],r[2]))
+
+
+def evaluate(results):
+	golden_edges = set()
+	with open('test_100k.csv','r') as f:
+		for line in f:
+			uid1, uid2 = line.strip().split(',')
+			golden_edges.add((min(uid1, uid2),max(uid1, uid2)))
+
+	t_p = 0
+	count = 0
+	for pair in results:
+		if (pair[0],pair[1]) in golden_edges:
+			t_p+=1
+		count += 1
+	print "P@{} = {}".format(count, float(t_p)/count)
+	print "R@{} = {}".format(count, float(t_p)/len(golden_edges))
+
+
+# output the top predictions
+results_top_prediction = []
+for r in results[:215307]:  #192149 #215307
+	results_top_prediction.append((r[0],r[1]))
+write_to_file(results_top_prediction, './ensemble/xg_submission_4000_d5.txt')
+
+# output the top predictions
+results_top_prediction = []
+for r in results[:215307]:  #192149 #215307
+	results_top_prediction.append((r[0],r[1],r[2]))
+write_score_to_file(results_top_prediction, './ensemble/xg_scores_4000_d5.txt')
+# evaluate(results_top_prediction)
+
+
+# # output the positive predictions
+# results_strict = []
+# for r in results:
+# 	if r[2]>=0.5:
+# 		results_strict.append((r[0],r[1]))
+# write_to_file(results_strict,'./ensemble/result_strict.submit.txt')
+# evaluate(results_strict)

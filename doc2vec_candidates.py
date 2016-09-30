@@ -1,6 +1,7 @@
 from myScripts import *
 import gensim, logging
 import numpy as np
+
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
 
