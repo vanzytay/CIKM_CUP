@@ -364,7 +364,7 @@ class EventRNN:
         """ Generates top-k predictions from candidates
         """
         import operator
-        with open('candidate_scores.pkl','r') as f:
+        with open('candidate_scores_10k.pkl','r') as f:
             self.candidate_scores = pickle.load(f)
         logging.info("Loaded scores!")
         sorted_x = sorted(self.candidate_scores.items(), key=operator.itemgetter(1), reverse=True)
@@ -382,8 +382,8 @@ class EventRNN:
             results.append((pair[0],pair[1]))
             results_score.append((pair[0],pair[1],data[1]))
         logging.info("Number of results %d",len(results))
-        write_to_file(results,'result_rnn_1.txt')
-        write_score_to_file(results_score,'results_rnn_1_scores.txt')
+        write_to_file(results,'result_rnn_10k.txt')
+        write_score_to_file(results_score,'results_rnn_10k_scores.txt')
 
 
 if __name__ == '__main__':
@@ -398,11 +398,11 @@ if __name__ == '__main__':
     e.maxlen = 200
     if(args.mode=='predict'):
         # Prediction Mode using CPU
-        e._create_model(weight_path = 'models/GRU_10k.h5')
-        e.loadCandidates()
-        e.computeCandidateScores()
-        with open('candidate_scores_10k.pkl','w+') as f:
-            pickle.dump(e.candidate_scores, f)
+        # e._create_model(weight_path = 'models/GRU_max.h5')
+        # e.loadCandidates()
+        # e.computeCandidateScores()
+        # with open('candidate_scores_max.pkl','w+') as f:
+        #     pickle.dump(e.candidate_scores, f)
         e.generatePredictions(SUBMIT_FULL)
     elif(args.mode=='train'):
         e.create_train_sets(limit=10000)

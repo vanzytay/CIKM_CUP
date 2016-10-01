@@ -164,7 +164,6 @@ def extract_feature_for_pair_users(uid1, uid2):
 	except:
 		cos = -1
 		pass
-
 	features.append(cos)
 	#------------Doc2vec Higher Level x 1------------------------------#
 	try:
@@ -175,7 +174,6 @@ def extract_feature_for_pair_users(uid1, uid2):
 	except:
 		cos = -1
 		pass
-
 	features.append(cos)
 
 	#------------Doc2vec Higher Level x 2------------------------------#
@@ -191,7 +189,6 @@ def extract_feature_for_pair_users(uid1, uid2):
 		vecs = np.zeros(300).tolist()
 		cos = -1
 		pass
-
 	features += vecs
 	features.append(cos)
 
@@ -202,10 +199,14 @@ def extract_feature_for_pair_users(uid1, uid2):
 		v1 = doc2vec_model_h3.docvecs['USER_'+str(uid1)]
 		v2 = doc2vec_model_h3.docvecs['USER_'+str(uid2)]
 		cos = 1 - spatial.distance.cosine(v1, v2)
+		vecs = []
+		vecs += v1
+		vecs += v2
 	except:
+		vecs = np.zeros(300).tolist()
 		cos = -1
 		pass
-
+	features += vecs
 	features.append(cos)
 
 
@@ -231,40 +232,19 @@ def extract_feature_for_pair_users(uid1, uid2):
 	except:
 		cos = -1
 		pass
-
 	features.append(cos)
+	
 	'''
 	Using feature index is optional
 	'''
-	# if(feature_index is None):
-	# 	# This should be done once only! 
-	# 	print("Creating Feature Index...")
-	# 	feature_columns+=['click_count_day_time_'+str(i) for i in range(len(click_count_day_time))]
-	# 	feature_columns+=['click_count_time_'+str(i) for i in range(len(click_count_time))]
-	# 	feature_columns+=['diff_click_count_day_time_'+str(i) for i in range(len(diff_click_count_day_time))]
-	# 	feature_columns+=['diff_click_count_time_'+str(i) for i in range(len(diff_click_count_time))]
-	# 	feature_columns+=['click_count_time_normalized_'+str(i) for i in range(len(click_count_time_normalized))]
-	# 	feature_columns+=['click_count_day_time_normalized_'+str(i) for i in range(len(click_count_day_time_normalized))]
-	# 	for oo in order_objs_lens:
-	# 		feature_columns+=['order_objs_'+str(i) for i in range(oo)]
-	# 	feature_columns+=['doc2vec_dist']
-	# 	feature_columns+=['doc2vec_dist_h1']
-	# 	feature_columns+=['doc2vec_dist_h2']
-	# 	feature_columns+=['doc2vec_dist_h3']
-	# 	feature_columns+=['doc2vec_dist_concat']
-	# 	feature_columns+=['word_model_dist']
-	# 	# This should be equal!
-	# 	print("Number of feature columns %d",len(feature_columns))
-	# 	print("Total features: %d",len(features))
-	# 	feature_index = feature_columns
-	# features+=get_time_overalap(uid1,uid2,60,[1,5,10,30])
+
 	return features 
 
 
 models=['candidates/candidate_pairs.baseline.nn.100.train-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
 #'candidates/candidate_pairs.nn.100.train-100k.word2vec.json.gz']
 
-nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),10) for m in models]
+nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),5) for m in models]
 order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
 
 nn_pairs= []
@@ -387,7 +367,7 @@ def create_large_mlp():
 
 # model = create_large_mlp()
 
-mdl = KerasClassifier(build_fn=create_large_mlp, nb_epoch=500, batch_size=128, verbose=1)
+mdl = KerasClassifier(build_fn=create_large_mlp, nb_epoch=100, batch_size=32, verbose=1)
 mdl.fit(X, Y)
 YY_result = mdl.predict(XX)
 
@@ -581,10 +561,10 @@ def evaluate(results):
 results_top_prediction = []
 for r in results[:215307]:  #192149 #215307
 	results_top_prediction.append((r[0],r[1]))
-write_to_file(results_top_prediction, './ensemble/mlp_submission.txt')
+write_to_file(results_top_prediction, './ensemble/mlp_5nn_submission.txt')
 
 # output the top predictions
 results_top_prediction = []
 for r in results[:215307]:  #192149 #215307
 	results_top_prediction.append((r[0],r[1],r[2]))
-write_score_to_file(results_top_prediction, './ensemble/mlp_scores.txt')
+write_score_to_file(results_top_prediction, './ensemble/mlp_5nn_scores.txt')
