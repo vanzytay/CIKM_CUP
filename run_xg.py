@@ -264,18 +264,17 @@ def write_to_file(results, filename):
 			f.write("{},{}\n".format(_[0],_[1]))
 
 
-def evaluate_on_test_100k(results):
+def evaluate_on_test_98k(results):
 	'''
-	Evaluate on test_100k.csv
+	Evaluate on test_98k.csv
 	'''
 	golden_edges = set()
-	au = set()
-	with open('test_100k.csv','r') as f:
+	with open('test_98k.csv','r') as f:
 		for line in f:
 			uid1, uid2 = line.strip().split(',')
 			golden_edges.add((min(uid1, uid2),max(uid1, uid2)))
-			au.update([uid1,uid2])
-	print len(au)
+	
+	print "Len golden_pairs = {}".format(golden_edges)
 	golden_edges_lst = list(golden_edges)
 	random.shuffle(golden_edges_lst)
 	golden_edges_half = set(golden_edges_lst[:int(len(golden_edges)/2)])
@@ -364,7 +363,8 @@ Setting up XG Boost
 First XG Boost is to predict top pairs from the knn candidates
 '''
 
-train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
+train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz',
+		     'candidates/candidate_pairs.nn.100.train-98k.domain-only.no-duplicate.group.doc2vec.json.gz']
 
 nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),5) for m in train_candidate_sets]
 order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
@@ -380,7 +380,7 @@ random.shuffle(nn_pairs)
 golden_edges = set()
 positive_samples = []
 timer = ProgressBar(title="Reading golden edges")
-with open('train_100k.csv','r') as f:
+with open('train_98k.csv','r') as f:
 	for line in f:
 		timer.tick()
 		uid1, uid2 = line.strip().split(',')
@@ -402,7 +402,7 @@ while len(sample_pairs_train)<TRAIN_SIZE and i<len(nn_pairs):
 	i+=1
 
 i=0
-while len(sample_pairs_train)<2.5*positive_count and i<len(nn_pairs): #3.5-5 for testing
+while len(sample_pairs_train)<3*positive_count and i<len(nn_pairs): #3.5-5 for testing
 	if (min(nn_pairs[i][0],nn_pairs[i][1]), max(nn_pairs[i][0],nn_pairs[i][1])) not in golden_edges:
 		sample_pairs_train.append(nn_pairs[i])
 	i+=1
@@ -473,7 +473,8 @@ Training pairs will be the top 50000 pairs from the last step and the pairs exte
 '''
 
 TOP_PAIRS_NB = 50000
-dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
+dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz',
+		     'candidates/candidate_pairs.nn.100.test-98k.domain-only.no-duplicate.group.doc2vec.json.gz'
 ]#'candidates/candidate_pairs.nn.100.test-100k.word2vec.json.gz']
 
 def predict_by_rf(rf_model, candidates_sets, strict_mode, nn_pairs=None):
@@ -544,10 +545,10 @@ def predict_by_rf(rf_model, candidates_sets, strict_mode, nn_pairs=None):
 
 results = predict_by_rf(xgb1, dev_candidates_sets, False, None)
 
-# If you don't use the inference part. Can ouput the results here. Note that the current results is for test_100k candidates file. 
+# If you don't use the inference part. Can ouput the results here. Note that the current results is for test_98k candidates file. 
 
-evaluate_on_test_100k(results[:95000])
-evaluate_on_test_100k(results[:190000])
+evaluate_on_test_98k(results[:100000])
+evaluate_on_test_98k(results[:200000])
 
 # Extend top 50k pairs
 
@@ -556,7 +557,7 @@ ext_pairs = extend_pairs(results[:TOP_PAIRS_NB])
 # Build XGB2 on the extended pairs
 
 golden_edges = set()
-with open('test_100k.csv','r') as f:
+with open('test_98k.csv','r') as f:
 	for line in f:
 		uid1, uid2 = line.strip().split(',')
 		golden_edges.add((min(uid1, uid2),max(uid1, uid2)))
@@ -597,7 +598,8 @@ PREDICT ON REAL TEST DATA
 	the help of second RF classifier to take vote where 2 cluster should be merged
 '''
 
-test_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz'
+test_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz',
+		     'candidates/candidate_pairs.nn.100.test.domain-only.no-duplicate.group.doc2vec.json.gz'
 ]
 
 XGB1_results = predict_by_rf(xgb1, test_candidate_sets, False, None)
@@ -655,3 +657,4 @@ print "new_extended pairs {}".format(len(set(get_top_pair_for_submit(XGB2_ext_pa
 Merge XGB2 ext_pairs on top of XGB1 predictions 
 '''
 write_to_file(get_top_pair_for_submit(XGB2_ext_pairs+XGB1_results), 'result_ordered.with-inference.submit.txt')
+
