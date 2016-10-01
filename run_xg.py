@@ -363,7 +363,8 @@ Setting up XG Boost
 First XG Boost is to predict top pairs from the knn candidates
 '''
 
-train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
+train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz',
+		     'candidates/candidate_pairs.nn.100.train-98k.domain-only.no-duplicate.group.doc2vec.json.gz']
 
 nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in train_candidate_sets]
 order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
@@ -473,7 +474,8 @@ Training pairs will be the top 50000 pairs from the last step and the pairs exte
 '''
 
 TOP_PAIRS_NB = 50000
-dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
+dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz',
+		     'candidates/candidate_pairs.nn.100.test-98k.domain-only.no-duplicate.group.doc2vec.json.gz'
 ]#'candidates/candidate_pairs.nn.100.test-100k.word2vec.json.gz']
 
 def predict_by_rf(rf_model, candidates_sets, strict_mode, nn_pairs=None):
@@ -597,7 +599,8 @@ PREDICT ON REAL TEST DATA
 	the help of second RF classifier to take vote where 2 cluster should be merged
 '''
 
-test_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz'
+test_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz',
+		     'candidates/candidate_pairs.nn.100.test.domain-only.no-duplicate.group.doc2vec.json.gz'
 ]
 
 XGB1_results = predict_by_rf(xgb1, test_candidate_sets, False, None)
