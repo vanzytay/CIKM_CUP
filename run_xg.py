@@ -16,6 +16,8 @@ from xgboost.sklearn import XGBClassifier
 import argparse
 from shared.ordered_object import *
 from shared.utilities import *
+from sklearn.metrics.pairwise import euclidean_distances
+from sklearn.metrics.pairwise import manhattan_distances
 
 # Set up args parser
 parser = argparse.ArgumentParser()
@@ -25,19 +27,19 @@ args = parser.parse_args()
 
 feature_index = None
 
-def normalize_click(a):
-	return np.true_divide(a,np.sum(a)) if np.sum(a)!=0 else 0
+# def normalize_click(a):
+# 	return np.true_divide(a,np.sum(a)) if np.sum(a)!=0 else 0
 
-user_features = dictFromFileUnicodeNormal('features/user_features.json.gz')
-all_users = set(user_features.keys())
-timer = ProgressBar(title="Normalizing click")
-for uid in all_users:
-	timer.tick()
-	# print(user_features[uid])
-	user_features[uid]['click_count_day_time'] = np.array(user_features[uid]['click_count_day_time'])
-	user_features[uid]['click_count_time'] = np.array(user_features[uid]['click_count_time'])
-	user_features[uid]['click_count_day_time_normalized'] = normalize_click(user_features[uid]['click_count_day_time'])
-	user_features[uid]['click_count_time_normalized'] = normalize_click(user_features[uid]['click_count_time'])
+# user_features = dictFromFileUnicodeNormal('features/user_features.json.gz')
+# all_users = set(user_features.keys())
+# timer = ProgressBar(title="Normalizing click")
+# for uid in all_users:
+# 	timer.tick()
+# 	# print(user_features[uid])
+# 	user_features[uid]['click_count_day_time'] = np.array(user_features[uid]['click_count_day_time'])
+# 	user_features[uid]['click_count_time'] = np.array(user_features[uid]['click_count_time'])
+# 	user_features[uid]['click_count_day_time_normalized'] = normalize_click(user_features[uid]['click_count_day_time'])
+# 	user_features[uid]['click_count_time_normalized'] = normalize_click(user_features[uid]['click_count_time'])
 
 
 def click_distribution_similarity(dt1, dt2):
@@ -87,6 +89,33 @@ def get_time_overalap(u1,u2,interval, thrs):
 				c[thr]+=1
 	return [c[thr] for thr in thrs]
 
+def getDoc2VecFeatures(u1, u2, mdl, v1, v2):
+	'''
+	Gets doc2vec Features 
+	returns 
+		:Cosine Similarity
+		:L1 and L2 Norm Distances
+		:Orders of U1 in U2 and U2 in U1
+	'''
+	try:
+		u1_knn = mdl.docvecs.most_similar(u1, topn=100)
+		u2_knn = mdl.docvecs.most_similar(u2, topn=100)
+		cos = mdl.docvecs.similarity(u1, u2)
+		euc = euclidean_distances([v1],[v2])[0][0]
+		mhd = manhattan_distances([v1],[v2])[0][0]
+		# Get vectors
+		orders_1 = [str(x[0]) for x in u1_knn]
+		orders_2 = [str(x[0]) for x in u2_knn]
+		order_u2_in_u1, order_u1_in_u2 = -1, -1
+		if(u2 in orders_1):
+			order_u2_in_u1 = orders_1.index(u2)
+		if(u1 in orders_2):
+			order_u1_in_u2 = orders_2.index(u1)
+	except:
+		# pass
+		return [-1,-1,-1,-1,-1]
+	return [order_u2_in_u1, order_u1_in_u2, cos, euc, mhd]
+
 def extract_feature_for_pair_users(uid1, uid2):
 	# if random.randint(1, 2)==2:
 	# 	tmp = uid1
@@ -98,33 +127,33 @@ def extract_feature_for_pair_users(uid1, uid2):
 	feature_columns = []
 
 	features = []
-	f1 = user_features[uid1]
-	f2 = user_features[uid2]
+	# f1 = user_features[uid1]
+	# f2 = user_features[uid2]
 
-	# -----------Click Count Day Time---------------------# 
-	click_count_day_time = f1['click_count_day_time'].tolist() + f2['click_count_day_time'].tolist()
-	features += click_count_day_time
+	# # -----------Click Count Day Time---------------------# 
+	# click_count_day_time = f1['click_count_day_time'].tolist() + f2['click_count_day_time'].tolist()
+	# features += click_count_day_time
 	
-	# -----------Click Count Time---------------------# 
-	click_count_time = f1['click_count_time'].tolist() + f2['click_count_time'].tolist()
-	features+=click_count_time
+	# # -----------Click Count Time---------------------# 
+	# click_count_time = f1['click_count_time'].tolist() + f2['click_count_time'].tolist()
+	# features+=click_count_time
 
-	# ------------DIFF click count day time-----------#
-	diff_click_count_day_time = np.absolute((f1['click_count_day_time'] - f2['click_count_day_time'])).tolist()
-	features += diff_click_count_day_time
+	# # ------------DIFF click count day time-----------#
+	# diff_click_count_day_time = np.absolute((f1['click_count_day_time'] - f2['click_count_day_time'])).tolist()
+	# features += diff_click_count_day_time
 
-	# ------------DIFF click count time-----------#
-	diff_click_count_time = np.absolute((f1['click_count_time'] - f2['click_count_time'])).tolist()
-	features+=diff_click_count_time
+	# # ------------DIFF click count time-----------#
+	# diff_click_count_time = np.absolute((f1['click_count_time'] - f2['click_count_time'])).tolist()
+	# features+=diff_click_count_time
 
-	#not really help, reduce recall abit
-	#-------------------Click_Count_Time_Normalized---#
-	click_count_time_normalized = f1['click_count_time_normalized'].tolist() + f2['click_count_time_normalized'].tolist()
-	features += click_count_time_normalized
+	# #not really help, reduce recall abit
+	# #-------------------Click_Count_Time_Normalized---#
+	# click_count_time_normalized = f1['click_count_time_normalized'].tolist() + f2['click_count_time_normalized'].tolist()
+	# features += click_count_time_normalized
 
-	#not really help, reduce recall abit
-	click_count_day_time_normalized = f1['click_count_day_time_normalized'].tolist() + f2['click_count_day_time_normalized'].tolist()
-	features+= click_count_day_time_normalized
+	# #not really help, reduce recall abit
+	# click_count_day_time_normalized = f1['click_count_day_time_normalized'].tolist() + f2['click_count_day_time_normalized'].tolist()
+	# features+= click_count_day_time_normalized
 
 	
 	# remove=> increase P but reduce R abit, f1 increaes abit
@@ -157,89 +186,65 @@ def extract_feature_for_pair_users(uid1, uid2):
 		pass
 
 	features.append(cos)
-	#------------Doc2vec Higher Level x 1------------------------------#
-	try:
-		# TY: My word_level model uses USER_ + ID as label id
-		v1 = doc2vec_model_h1.docvecs['USER_'+str(uid1)]
-		v2 = doc2vec_model_h1.docvecs['USER_'+str(uid2)]
-		cos = 1 - spatial.distance.cosine(v1, v2)
-	except:
-		cos = -1
-		pass
 
-	features.append(cos)
+
+	#------------Doc2vec Higher Level x 1------------------------------#
+
+	
+	# TY: My word_level model uses USER_ + ID as label id
+	v1 = doc2vec_model_h1.docvecs['USER_'+str(uid1)]
+	v2 = doc2vec_model_h1.docvecs['USER_'+str(uid2)]
+	features += getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h1, v1, v2)
+
 
 	#------------Doc2vec Higher Level x 2------------------------------#
-	try:
-		# TY: My word_level model uses USER_ + ID as label id
-		v1 = doc2vec_model_h2.docvecs['USER_'+str(uid1)]
-		v2 = doc2vec_model_h2.docvecs['USER_'+str(uid2)]
-		cos = 1 - spatial.distance.cosine(v1, v2)
-	except:
-		cos = -1
-		pass
 
-	features.append(cos)
+	v1 = doc2vec_model_h2.docvecs['USER_'+str(uid1)]
+	v2 = doc2vec_model_h2.docvecs['USER_'+str(uid2)]		
+	features += getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h2, v1, v2)
 
 	#------------Doc2vec Higher Level x 3------------------------------#
-	try:
-		# TY: My word_level model uses USER_ + ID as label id
-		v1 = doc2vec_model_h3.docvecs['USER_'+str(uid1)]
-		v2 = doc2vec_model_h3.docvecs['USER_'+str(uid2)]
-		cos = 1 - spatial.distance.cosine(v1, v2)
-	except:
-		cos = -1
-		pass
 
-	features.append(cos)
-
+	v1 = doc2vec_model_h3.docvecs['USER_'+str(uid1)]
+	v2 = doc2vec_model_h3.docvecs['USER_'+str(uid2)]
+	features += getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h3, v1, v2)
+	
 
 	#------------Doc2vec Level 0 Concat ------------------------------#
-	try:
-		# TY: My word_level model uses USER_ + ID as label id
-		v1 = doc2vec_model_concat.docvecs['USER_'+str(uid1)]
-		v2 = doc2vec_model_concat.docvecs['USER_'+str(uid2)]
-		cos = 1 - spatial.distance.cosine(v1, v2)
-	except:
-		cos = -1
-		pass
 
-	features.append(cos)
-
+	v1 = doc2vec_model_concat.docvecs['USER_'+str(uid1)]
+	v2 = doc2vec_model_concat.docvecs['USER_'+str(uid2)]
+	features += getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_concat, v1, v2)
+	
 
 	#------------Word-Lvl Doc2vec------------------------------#
-	try:
-		# TY: My word_level model uses USER_ + ID as label id
-		v1 = word_model.docvecs['USER_'+str(uid1)]
-		v2 = word_model.docvecs['USER_'+str(uid2)]
-		cos = 1 - spatial.distance.cosine(v1, v2)
-	except:
-		cos = -1
-		pass
-
-	features.append(cos)
-
-	if(feature_index is None):
-		# This should be done once only! 
-		print("Creating Feature Index...")
-		feature_columns+=['click_count_day_time_'+str(i) for i in range(len(click_count_day_time))]
-		feature_columns+=['click_count_time_'+str(i) for i in range(len(click_count_time))]
-		feature_columns+=['diff_click_count_day_time_'+str(i) for i in range(len(diff_click_count_day_time))]
-		feature_columns+=['diff_click_count_time_'+str(i) for i in range(len(diff_click_count_time))]
-		feature_columns+=['click_count_time_normalized_'+str(i) for i in range(len(click_count_time_normalized))]
-		feature_columns+=['click_count_day_time_normalized_'+str(i) for i in range(len(click_count_day_time_normalized))]
-		for oo in order_objs_lens:
-			feature_columns+=['order_objs_'+str(i) for i in range(oo)]
-		feature_columns+=['doc2vec_dist']
-		feature_columns+=['doc2vec_dist_h1']
-		feature_columns+=['doc2vec_dist_h2']
-		feature_columns+=['doc2vec_dist_h3']
-		feature_columns+=['doc2vec_dist_concat']
-		feature_columns+=['word_model_dist']
-		# This should be equal!
-		print("Number of feature columns %d",len(feature_columns))
-		print("Total features: %d",len(features))
-		feature_index = feature_columns
+	
+	# TY: My word_level model uses USER_ + ID as label id
+	v1 = word_model.docvecs['USER_'+str(uid1)]
+	v2 = word_model.docvecs['USER_'+str(uid2)]
+	features += getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), word_model, v1, v2)
+		
+	# if(feature_index is None):
+	# 	# This should be done once only! 
+	# 	print("Creating Feature Index...")
+	# 	feature_columns+=['click_count_day_time_'+str(i) for i in range(len(click_count_day_time))]
+	# 	feature_columns+=['click_count_time_'+str(i) for i in range(len(click_count_time))]
+	# 	feature_columns+=['diff_click_count_day_time_'+str(i) for i in range(len(diff_click_count_day_time))]
+	# 	feature_columns+=['diff_click_count_time_'+str(i) for i in range(len(diff_click_count_time))]
+	# 	feature_columns+=['click_count_time_normalized_'+str(i) for i in range(len(click_count_time_normalized))]
+	# 	feature_columns+=['click_count_day_time_normalized_'+str(i) for i in range(len(click_count_day_time_normalized))]
+	# 	for oo in order_objs_lens:
+	# 		feature_columns+=['order_objs_'+str(i) for i in range(oo)]
+	# 	feature_columns+=['doc2vec_dist']
+	# 	feature_columns+=['doc2vec_dist_h1']
+	# 	feature_columns+=['doc2vec_dist_h2']
+	# 	feature_columns+=['doc2vec_dist_h3']
+	# 	feature_columns+=['doc2vec_dist_concat']
+	# 	feature_columns+=['word_model_dist']
+	# 	# This should be equal!
+	# 	print("Number of feature columns %d",len(feature_columns))
+	# 	print("Total features: %d",len(features))
+	# 	feature_index = feature_columns
 	# features+=get_time_overalap(uid1,uid2,60,[1,5,10,30])
 	return features 
 
@@ -340,7 +345,7 @@ def extend_pairs(pairs):
 	for cid in cluster.keys():
 		for u in cluster[cid]:
 			for v in cluster[cid]:
-				if u<v:# and (u,v) not in edges:
+				if u<v: # and (u,v) not in edges:
 					new_pairs.append((u,v))
 
 	return new_pairs
@@ -363,8 +368,10 @@ Setting up XG Boost
 First XG Boost is to predict top pairs from the knn candidates
 '''
 
-train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz',
-		     'candidates/candidate_pairs.nn.100.train-98k.domain-only.no-duplicate.group.doc2vec.json.gz']
+# train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz',
+# 		     'candidates/candidate_pairs.nn.100.train-98k.domain-only.no-duplicate.group.doc2vec.json.gz']
+
+train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
 
 nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),5) for m in train_candidate_sets]
 order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
@@ -442,7 +449,6 @@ xgb1 = XGBClassifier(
 print("Fitting XGB[1]")
 xgb1.fit(np.array(X),np.array(Y), verbose=True)
 
-
 # Evaluate xgb1
 
 from sklearn.metrics import precision_score
@@ -473,9 +479,11 @@ Training pairs will be the top 50000 pairs from the last step and the pairs exte
 '''
 
 TOP_PAIRS_NB = 50000
-dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz',
-		     'candidates/candidate_pairs.nn.100.test-98k.domain-only.no-duplicate.group.doc2vec.json.gz'
-]#'candidates/candidate_pairs.nn.100.test-100k.word2vec.json.gz']
+# dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz',
+# 		     'candidates/candidate_pairs.nn.100.test-98k.domain-only.no-duplicate.group.doc2vec.json.gz'
+# ]#'candidates/candidate_pairs.nn.100.test-100k.word2vec.json.gz']
+
+dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
 
 def predict_by_rf(rf_model, candidates_sets, strict_mode, nn_pairs=None):
 	'''
@@ -598,9 +606,12 @@ PREDICT ON REAL TEST DATA
 	the help of second RF classifier to take vote where 2 cluster should be merged
 '''
 
-test_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz',
-		     'candidates/candidate_pairs.nn.100.test.domain-only.no-duplicate.group.doc2vec.json.gz'
-]
+# test_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz',
+# 		     'candidates/candidate_pairs.nn.100.test.domain-only.no-duplicate.group.doc2vec.json.gz'
+# ]
+
+test_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz']
+
 
 XGB1_results = predict_by_rf(xgb1, test_candidate_sets, False, None)
 

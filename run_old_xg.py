@@ -219,27 +219,27 @@ def extract_feature_for_pair_users(uid1, uid2):
 
 	features.append(cos)
 
-	if(feature_index is None):
-		# This should be done once only! 
-		print("Creating Feature Index...")
-		feature_columns+=['click_count_day_time_'+str(i) for i in range(len(click_count_day_time))]
-		feature_columns+=['click_count_time_'+str(i) for i in range(len(click_count_time))]
-		feature_columns+=['diff_click_count_day_time_'+str(i) for i in range(len(diff_click_count_day_time))]
-		feature_columns+=['diff_click_count_time_'+str(i) for i in range(len(diff_click_count_time))]
-		feature_columns+=['click_count_time_normalized_'+str(i) for i in range(len(click_count_time_normalized))]
-		feature_columns+=['click_count_day_time_normalized_'+str(i) for i in range(len(click_count_day_time_normalized))]
-		for oo in order_objs_lens:
-			feature_columns+=['order_objs_'+str(i) for i in range(oo)]
-		feature_columns+=['doc2vec_dist']
-		feature_columns+=['doc2vec_dist_h1']
-		feature_columns+=['doc2vec_dist_h2']
-		feature_columns+=['doc2vec_dist_h3']
-		feature_columns+=['doc2vec_dist_concat']
-		feature_columns+=['word_model_dist']
-		# This should be equal!
-		print("Number of feature columns %d",len(feature_columns))
-		print("Total features: %d",len(features))
-		feature_index = feature_columns
+	# if(feature_index is None):
+	# 	# This should be done once only! 
+	# 	print("Creating Feature Index...")
+	# 	feature_columns+=['click_count_day_time_'+str(i) for i in range(len(click_count_day_time))]
+	# 	feature_columns+=['click_count_time_'+str(i) for i in range(len(click_count_time))]
+	# 	feature_columns+=['diff_click_count_day_time_'+str(i) for i in range(len(diff_click_count_day_time))]
+	# 	feature_columns+=['diff_click_count_time_'+str(i) for i in range(len(diff_click_count_time))]
+	# 	feature_columns+=['click_count_time_normalized_'+str(i) for i in range(len(click_count_time_normalized))]
+	# 	feature_columns+=['click_count_day_time_normalized_'+str(i) for i in range(len(click_count_day_time_normalized))]
+	# 	for oo in order_objs_lens:
+	# 		feature_columns+=['order_objs_'+str(i) for i in range(oo)]
+	# 	feature_columns+=['doc2vec_dist']
+	# 	feature_columns+=['doc2vec_dist_h1']
+	# 	feature_columns+=['doc2vec_dist_h2']
+	# 	feature_columns+=['doc2vec_dist_h3']
+	# 	feature_columns+=['doc2vec_dist_concat']
+	# 	feature_columns+=['word_model_dist']
+	# 	# This should be equal!
+	# 	print("Number of feature columns %d",len(feature_columns))
+	# 	print("Total features: %d",len(features))
+	# 	feature_index = feature_columns
 	# features+=get_time_overalap(uid1,uid2,60,[1,5,10,30])
 	return features 
 
@@ -339,7 +339,6 @@ xgb1 = XGBClassifier(
  reg_alpha=0.005,
  scale_pos_weight=1,
  seed=27)
-
 
 # modelfit(xgb1, np.array(X), np.array(Y), feature_index=feature_index)
 print("Fitting XGB[1]")

@@ -8,6 +8,7 @@ from collections import Counter
 import numpy as np
 
 SUBMIT_FULL = 215307
+SUBMIT_FULL = 115000
 
 def readSubmissions(directory,limitFiles=None):
 	"""
@@ -39,6 +40,8 @@ for f in file_list:
 	with open('./ensemble/'+f,'r') as fin:
 		for index, line in enumerate(fin):
 			pair = line.strip().split(',')
+			if(len(pair)<2):
+				continue
 			users.append(pair[0])
 			users.append(pair[1])
 			user_pair = tuple([pair[0],pair[1]])

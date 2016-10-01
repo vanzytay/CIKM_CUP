@@ -1,30 +1,26 @@
+from __future__ import division
 import os
-# os.environ["THEANO_FLAGS"] = "mode=FAST_RUN,device=cpu,floatX=float32"
 from collections import defaultdict
 import string
 import json
 import tqdm
 from scipy import spatial
 import numpy as np
-from gensim.models.doc2vec import *
-from gensim.models import Doc2Vec
-import math
 import pandas as pd
 from keras.models import Sequential
 from keras.layers import Dense, Activation, Dropout
 from keras.wrappers.scikit_learn import KerasClassifier
-from sklearn.cross_validation import cross_val_score
-from sklearn.preprocessing import LabelEncoder
-from sklearn.cross_validation import StratifiedKFold
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import Pipeline
+from gensim.models.doc2vec import *
+from gensim.models import Doc2Vec
+import math
+from xg_lib import *
+import xgboost as xgb
+from xgboost.sklearn import XGBClassifier
 import argparse
 from shared.ordered_object import *
 from shared.utilities import *
 
-'''
-Run MLP version of train/test
-'''
+
 
 # Set up args parser
 parser = argparse.ArgumentParser()
@@ -68,7 +64,6 @@ def click_distribution_similarity_KL(dt1, dt2):
 	return min(MAX_SIM,1/sum) if sum!=0 else MAX_SIM 
 
 # Load doc2vec ensemble!
-print("Loading doc2vec neural language ensemble!")
 doc2vec_model = Doc2Vec.load('models/user-url.d.400.w.8.minf.1.filtered-urls.5trains.doc2vec')
 doc2vec_model_h1 = Doc2Vec.load('models/mdl_urls_300_w5_h1.d2v')
 doc2vec_model_h2 = Doc2Vec.load('models/mdl_urls_300_w10_h2.d2v')
@@ -96,6 +91,7 @@ def get_time_overalap(u1,u2,interval, thrs):
 			if bin1[k]>=thr and bin2[k]>=thr:
 				c[thr]+=1
 	return [c[thr] for thr in thrs]
+
 
 def extract_feature_for_pair_users(uid1, uid2):
 	# if random.randint(1, 2)==2:
@@ -182,14 +178,14 @@ def extract_feature_for_pair_users(uid1, uid2):
 		v1 = doc2vec_model_h2.docvecs['USER_'+str(uid1)]
 		v2 = doc2vec_model_h2.docvecs['USER_'+str(uid2)]
 		cos = 1 - spatial.distance.cosine(v1, v2)
-		vecs = []
-		vecs += v1
-		vecs += v2
+		#vecs = []
+		#vecs += v1
+		#vecs += v2
 	except:
 		vecs = np.zeros(300).tolist()
 		cos = -1
 		pass
-	features += vecs
+	#features += vecs
 	features.append(cos)
 
 
@@ -199,14 +195,14 @@ def extract_feature_for_pair_users(uid1, uid2):
 		v1 = doc2vec_model_h3.docvecs['USER_'+str(uid1)]
 		v2 = doc2vec_model_h3.docvecs['USER_'+str(uid2)]
 		cos = 1 - spatial.distance.cosine(v1, v2)
-		vecs = []
-		vecs += v1
-		vecs += v2
+		#vecs = []
+		#vecs += v1
+		#vecs += v2
 	except:
-		vecs = np.zeros(300).tolist()
+		#vecs = np.zeros(300).tolist()
 		cos = -1
 		pass
-	features += vecs
+	# features += vecs
 	features.append(cos)
 
 
@@ -240,12 +236,94 @@ def extract_feature_for_pair_users(uid1, uid2):
 
 	return features 
 
+def get_features_for_samples(sample_pairs, golden_edges):
+	samples = []
+	for pair in sample_pairs:
+		# !!! duplication
+		uid1,uid2 = pair[0], pair[1]
+		samples.append([uid1,uid2,int((min(uid1,uid2),max(uid1,uid2)) in golden_edges)] + extract_feature_for_pair_users(uid1,uid2))
+	return samples
 
-models=['candidates/candidate_pairs.baseline.nn.100.train-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
-#'candidates/candidate_pairs.nn.100.train-100k.word2vec.json.gz']
+def get_features_for_samples_test(sample_pairs):
+	samples = []
+	for pair in sample_pairs:
+		uid1,uid2 = pair[0], pair[1]
+		samples.append(extract_feature_for_pair_users(uid1,uid2))
+	return samples
 
-nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),5) for m in models]
+def write_to_file(results, filename):
+	with open(filename,'w') as f:
+		for _ in results:
+			f.write("{},{}\n".format(_[0],_[1]))
+
+
+def evaluate_on_test_98k(results):
+	'''
+	Evaluate on test_98k.csv
+	'''
+	golden_edges = set()
+	with open('test_98k.csv','r') as f:
+		for line in f:
+			uid1, uid2 = line.strip().split(',')
+			golden_edges.add((min(uid1, uid2),max(uid1, uid2)))
+	
+	print "Len golden_pairs = {}".format(len(golden_edges))
+	golden_edges_lst = list(golden_edges)
+	random.shuffle(golden_edges_lst)
+	golden_edges_half = set(golden_edges_lst[:int(len(golden_edges)/2)])
+	t_p = 0
+	count = 0
+	for pair in results:
+		if (pair[0],pair[1]) in golden_edges_half:
+			t_p+=1
+		count += 1
+	pre = float(t_p)/count
+	re = float(t_p)/len(golden_edges_half)
+	print
+	print "50%-pairs"
+	print "P@{} = {}".format(count, pre)
+	print "R@{} = {}".format(count, re)
+	print "F1@{} = {}".format(count, 2*pre*re/(pre+re))
+	t_p = 0
+	count = 0
+	for pair in results:
+		if (pair[0],pair[1]) in golden_edges:
+			t_p+=1
+		count += 1
+	pre = float(t_p)/count
+	re = float(t_p)/len(golden_edges)
+	print
+	print "Full-pairs"
+	print "P@{} = {}".format(count, pre)
+	print "R@{} = {}".format(count, re)
+	print "F1@{} = {}".format(count, 2*pre*re/(pre+re))
+
+
+def get_top_pair_for_submit(pairs):
+	p_set = set()
+	p_lst = []
+	c = 0
+	for p in pairs:
+		if (p[0],p[1]) not in p_set:
+			p_set.add((p[0],p[1]))
+			p_lst.append((p[0],p[1]))
+			c+=1
+			if c==215307:
+				break
+	return p_lst
+
+'''
+Setting up XG Boost
+First XG Boost is to predict top pairs from the knn candidates
+'''
+
+train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz',
+		     'candidates/candidate_pairs.nn.100.train-98k.domain-only.no-duplicate.group.doc2vec.json.gz']
+
+nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in train_candidate_sets]
 order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
+
+# Build the train and test data xgb1	
 
 nn_pairs= []
 for ps in nn_pairs_lst:
@@ -256,7 +334,7 @@ random.shuffle(nn_pairs)
 golden_edges = set()
 positive_samples = []
 timer = ProgressBar(title="Reading golden edges")
-with open('train_100k.csv','r') as f:
+with open('train_98k.csv','r') as f:
 	for line in f:
 		timer.tick()
 		uid1, uid2 = line.strip().split(',')
@@ -278,40 +356,18 @@ while len(sample_pairs_train)<TRAIN_SIZE and i<len(nn_pairs):
 	i+=1
 
 i=0
-while len(sample_pairs_train)<2.5*positive_count and i<len(nn_pairs): #3.5-5 for testing
+while len(sample_pairs_train)<3*positive_count and i<len(nn_pairs): #3.5-5 for testing
 	if (min(nn_pairs[i][0],nn_pairs[i][1]), max(nn_pairs[i][0],nn_pairs[i][1])) not in golden_edges:
 		sample_pairs_train.append(nn_pairs[i])
 	i+=1
 
 random.shuffle(sample_pairs_train)
 
-del nn_pairs
 
-def get_features_for_samples(sample_pairs):
-	samples = []
-	for pair in sample_pairs:
-		# !!! duplication
-		uid1,uid2 = pair[0], pair[1]
-		samples.append([uid1,uid2,int((min(uid1,uid2),max(uid1,uid2)) in golden_edges)] + extract_feature_for_pair_users(uid1,uid2))
-	return samples
+nn_pairs = None
 
-samples_train = get_features_for_samples(sample_pairs_train)
-samples_test = get_features_for_samples(sample_pairs_test)
-X = [e[3:] for e in samples_train]
-Y = [e[2] for e in samples_train]
-XX = [e[3:] for e in samples_test]
-YY = [e[2] for e in samples_test]
-
-
-# print("Loading Exp bundle..")
-
-# import cPickle as pickle
-# with open('exp_bundle.pkl','r') as f:
-# 	exp_bundle = pickle.load(f)
-# print("Loaded bundle..")
-
-# samples_train = exp_bundle['samples_train']
-# samples_test = exp_bundle['samples_test'] 
+samples_train = get_features_for_samples(sample_pairs_train, golden_edges)
+samples_test = get_features_for_samples(sample_pairs_test, golden_edges)
 
 X = [e[3:] for e in samples_train]
 Y = [e[2] for e in samples_train]
@@ -324,6 +380,17 @@ XX = np.array(XX)
 YY = np.array(YY)
 
 print(X.shape)
+
+# Clean up to save memory
+# Load doc2vec ensemble!
+print("Cleaning doc2vec ensemble to save memory!")
+doc2vec_model = None
+doc2vec_model_h1 = None
+doc2vec_model_h2 = None
+doc2vec_model_h3 = None
+doc2vec_model_concat = None
+word_model = None
+
 
 '''
 Run Keras MLP
@@ -346,27 +413,28 @@ samples_train = None
 
 def create_large_mlp():
 	model = Sequential()
-	model.add(Dense(512, input_dim=X.shape[1]))
+	model.add(Dense(128, input_dim=X.shape[1]))
 	model.add(Activation('relu'))
 	model.add(Dropout(0.2))
-	model.add(Dense(512))
+	model.add(Dense(128))
 	model.add(Activation('relu'))
 	model.add(Dropout(0.2))
-	model.add(Dense(512))
-	model.add(Activation('relu'))
-	model.add(Dropout(0.2))
-	model.add(Dense(512))
-	model.add(Activation('relu'))
-	model.add(Dropout(0.2))
-	model.add(Dense(512))
-	model.add(Activation('relu'))
-	model.add(Dropout(0.2))
-	model.add(Dense(512))
-	model.add(Activation('relu'))
-	model.add(Dropout(0.2))
+	# model.add(Dense(512))
+	# model.add(Activation('relu'))
+	# model.add(Dropout(0.2))
+	# model.add(Dense(512))
+	# model.add(Activation('relu'))
+	# model.add(Dropout(0.2))
+	# model.add(Dense(512))
+	# model.add(Activation('relu'))
+	# model.add(Dropout(0.2))
+	# model.add(Dense(512))
+	# model.add(Activation('relu'))
+	# model.add(Dropout(0.2))
 	model.add(Dense(1))
 	model.add(Activation('sigmoid'))
 	model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+	print(model.summary())
 	return model
 
 # evaluate model with standardized dataset
@@ -379,7 +447,7 @@ def create_large_mlp():
 
 # model = create_large_mlp()
 
-mdl = KerasClassifier(build_fn=create_large_mlp, nb_epoch=300, batch_size=32, verbose=1)
+mdl = KerasClassifier(build_fn=create_large_mlp, nb_epoch=250, batch_size=32, verbose=1)
 mdl.fit(X, Y)
 YY_result = mdl.predict(XX)
 
@@ -405,180 +473,114 @@ print "R[class-1] = {}".format(recall_score(YY, YY_result, pos_label=1, average=
 print "F1[class-1] = {}".format(f1_score(YY, YY_result, pos_label=1, average='binary'))
 print "Golden_count={}; Predict_count={}".format(sum(YY), sum(YY_result))
 
-# from sklearn.externals import joblib
+# print("Fitting XGB[2]")
+# xgb2.fit(np.array(XX),np.array(YY), verbose=True)
 
-# import sys
-# sys.setrecursionlimit(10000)
+# print("Predicting XGB[2] on hold out set")
+# Y_result = xgb2.predict(X)
+# print "P[class-1] = {}".format(precision_score(Y, Y_result, pos_label=1, average='binary'))
+# print "R[class-1] = {}".format(recall_score(Y, Y_result, pos_label=1, average='binary'))
+# print "F1[class-1] = {}".format(f1_score(Y, Y_result, pos_label=1, average='binary'))
+# print "Golden_count={}; Predict_count={}".format(sum(Y), sum(Y_result))
 
-# print "Saving deep model to disk.."
-# joblib.dump(estimator,'deep_models/models/mlp_simple.pkl')
 
+print("Reloading doc2vec ensemble!")
+# Load doc2vec ensemble!
+doc2vec_model = Doc2Vec.load('models/user-url.d.400.w.8.minf.1.filtered-urls.5trains.doc2vec')
+doc2vec_model_h1 = Doc2Vec.load('models/mdl_urls_300_w5_h1.d2v')
+doc2vec_model_h2 = Doc2Vec.load('models/mdl_urls_300_w10_h2.d2v')
+doc2vec_model_h3 = Doc2Vec.load('models/mdl_urls_300_w10_h3.d2v')
+doc2vec_model_concat = Doc2Vec.load('models/mdl_urls_300_concat.d2v')
+word_model = Doc2Vec.load('models/mdl_word.d2v')
 
 '''
-Predicting the real test pairs
+Build second Random Forest
+Training pairs will be the top 50000 pairs from the last step and the pairs extended from them
 '''
 
-models=['candidates/candidate_pairs.baseline.nn.100.test-100k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
+TOP_PAIRS_NB = 50000
+dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz',
+		     'candidates/candidate_pairs.nn.100.test-98k.domain-only.no-duplicate.group.doc2vec.json.gz'
+]#'candidates/candidate_pairs.nn.100.test-100k.word2vec.json.gz']
 
-nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in models]
-order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
+def predict_by_rf(rf_model, candidates_sets, strict_mode, nn_pairs=None):
+	'''
+	Return top predictions from random forest classifier
+		 - rf_model: trained rf model
+		 - candidates_sets: list of knn file to fetch the pairs
+		 - strict_mode: if True => output only positive pairs. otherwise output by likelihood order
+		 - nn_pairs: explicit pairs for predicting. If not None => candidates_sets won't be use
+	'''
+	global nn_pairs_lst
+	global order_objs
 
+	if nn_pairs==None:
+		nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in candidates_sets]
+		order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
+		nn_pairs= []
+		for ps in nn_pairs_lst:
+			nn_pairs += ps
 
-nn_pairs= []
-for ps in nn_pairs_lst:
-	nn_pairs += ps
+		nn_pairs = filter_nn_pairs(nn_pairs)
+		random.shuffle(nn_pairs)
 
-nn_pairs = filter_nn_pairs(nn_pairs)
-random.shuffle(nn_pairs)
+	# from multiprocessing.pool import ThreadPool
+	# pool = ThreadPool(20)
 
+	timer = ProgressBar(title="Predicting")
+	def predict(pairs):
+		timer.tick()
+		samples = get_features_for_samples_test(pairs)
+		confidences = rf_model.predict_proba(samples).tolist()
+		return [(pair[0],pair[1], confidences[i][1]) for i, pair in enumerate(pairs)]
 
-# from multiprocessing.pool import ThreadPool
-# pool = ThreadPool(20)
+	def chunks(l, n):
+		"""Yield successive n-sized chunks from l."""
+		for i in range(0, len(l), n):
+			yield l[i:i + n]
 
+	target = chunks(nn_pairs, 1000000)
+	# print("{} chunks".format(str(len(target))))
+	results_tmp = []
+	for t in target:
+		r = predict(t)
+		results_tmp.append(r)
 
-def get_features_for_samples_test(sample_pairs):
-	samples = []
-	for pair in sample_pairs:
-		uid1,uid2 = pair[0], pair[1]
-		# uid2 may be the keys
+# results_tmp = [y for x in results_tmp for y in x]
+# 	results_tmp = pool.map(predict, chunks(nn_pairs, 10000))
+	results_tmp = [y for x in results_tmp for y in x]
+
+	# Combine scores
+	# Take average if u,v and v,u in the candidates set
+	cs = {}
+	cs_keys = set()
+	r_ps = set()
+	for _ in results_tmp:
+		u1,u2 = min(_[0],_[1]), max(_[0],_[1])
+		if u1 not in cs_keys:
+			cs[u1] = {}
+			cs_keys.add(u1)
 		try:
-			if uid1 in orders[uid2].keys():
-				order = orders[udi2][uid1]
-			else:
-				order = 100
+			cs[u1][u2] = (cs[u1][u2] + _[2])/2
 		except:
-			order=100
-		samples.append(extract_feature_for_pair_users(uid1,uid2))
-	return samples
+			cs[u1][u2] = _[2]
+			pass
+		r_ps.add((u1,u2))
 
+	# Sort by likelihood of prediction
+	results = [(p[0],p[1],cs[p[0]][p[1]]) for p in r_ps]
+	results = sorted(results, key=lambda x: x[-1],  reverse=True)
+	timer.finish()
 
-timer = ProgressBar(title="Predicting")
-def predict(pairs):
-	timer.tick()
-	samples = get_features_for_samples_test(pairs)
-	confidences = mdl.predict_proba(samples).tolist()
-	# confidences2 = xgb2.predict_proba(samples).tolist()
-	return [(pair[0],pair[1],confidences[i][1]) for i, pair in enumerate(pairs)]
-	# return [(pair[0],pair[1], (confidences[i][1] + confidences2[i][1]) / 2) for i,pair in enumerate(pairs)]
+	if strict_mode:
+		results = [_ for _ in results if _[2]>0.5]
 
-def chunks(l, n):
-	"""Yield successive n-sized chunks from l."""
-	for i in range(0, len(l), n):
-		yield l[i:i + n]
+	return results
 
-# results_tmp = pool.map(predict, chunks(nn_pairs, 10000))
+results = predict_by_rf(mdl, dev_candidates_sets, False, None)
 
-target = chunks(nn_pairs, 10000)
+# If you don't use the inference part. Can ouput the results here. Note that the current results is for test_98k candidates file. 
 
-results_tmp = []
-for t in target:
-	r = predict(t)
-	results_tmp.append(r)
+evaluate_on_test_98k(results[:100000])
+evaluate_on_test_98k(results[:200000])
 
-results_tmp = [y for x in results_tmp for y in x]
-
-# Combine scores
-cs = {}
-cs_keys = set()
-r_ps = set()
-for r in results_tmp:
-	u1,u2 = min(r[0],r[1]), max(r[0],r[1])
-	if u1 not in cs_keys:
-		cs[u1] = {}
-		cs_keys.add(u1)
-	try:
-		cs[u1][u2] = (cs[u1][u2] + r[2])/2
-	except:
-		cs[u1][u2] = r[2]
-		pass
-	r_ps.add((u1,u2))
-
-
-ordered_score ={}
-for r in results_tmp:
-	ordered_score[r[0]] = []
-
-for r in results_tmp:
-	u1,u2 = r[0], r[1]
-	ordered_score[u1].append((u2, cs[min(u1,u2)][max(u1,u2)]))
-
-for u in ordered_score.keys():
-	ordered_score[u] = sorted(ordered_score[u], key=lambda x: x[-1],  reverse=True)	
-
-#finalize the result by layer
-output_set = set()
-results = []
-current_layer = 0
-while len(output_set)<len(r_ps):
-	# !!!
-	break
-	tmp_lst = []
-	for u1 in ordered_score.keys():
-		if current_layer < len(ordered_score[u1]):
-			u2 = ordered_score[u1][current_layer][0]
-			if (min(u1,u2),max(u1,u2)) not in output_set:
-				output_set.add((min(u1,u2),max(u1,u2)))
-				tmp_lst.append((min(u1,u2),max(u1,u2),ordered_score[u1][current_layer][1]))
-	tmp_lst = sorted(tmp_lst, key=lambda x: x[-1],  reverse=True)
-	results += tmp_lst
-	current_layer += 1
-	if current_layer==1:
-		break
-
-results_full = [(p[0],p[1],cs[p[0]][p[1]]) for p in r_ps]
-results_full = sorted(results_full, key=lambda x: x[-1],  reverse=True)
-
-for r in results_full:
-	u1,u2 = r[0], r[1]
-	if (u1,u2) not in output_set:
-		results.append((u1,u2, cs[u1][u2]))
-
-
-# results = [(p[0],p[1],cs[p[0]][p[1]]) for p in r_ps]
-# results = sorted(results, key=lambda x: x[-1],  reverse=True)
-timer.finish()
-
-# dictToFile(results, 'candidate_pairs.result.100.with-orders.json.gz')
-
-def write_to_file(results, filename):
-	with open(filename,'w') as f:
-		for r in results:
-			f.write("{},{}\n".format(r[0],r[1]))
-
-def write_score_to_file(results, filename):
-	# Save scores
-	with open(filename,'w') as f:
-		for r in results:
-			f.write("{},{},{}\n".format(r[0],r[1],r[2]))
-
-
-def evaluate(results):
-	golden_edges = set()
-	with open('test_100k.csv','r') as f:
-		for line in f:
-			uid1, uid2 = line.strip().split(',')
-			golden_edges.add((min(uid1, uid2),max(uid1, uid2)))
-
-	t_p = 0
-	count = 0
-	for pair in results:
-		if (pair[0],pair[1]) in golden_edges:
-			t_p+=1
-		count += 1
-	print "P@{} = {}".format(count, float(t_p)/count)
-	print "R@{} = {}".format(count, float(t_p)/len(golden_edges))
-
-
-
-
-# # output the top predictions
-# results_top_prediction = []
-# for r in results[:215307]:  #192149 #215307
-# 	results_top_prediction.append((r[0],r[1]))
-# write_to_file(results_top_prediction, './ensemble/mlp_5nn_300E_3L_submission.txt')
-
-# # output the top predictions
-# results_top_prediction = []
-# for r in results[:215307]:  #192149 #215307
-# 	results_top_prediction.append((r[0],r[1],r[2]))
-# write_score_to_file(results_top_prediction, './ensemble/mlp_5nn_300E_3L_scores.txt')
