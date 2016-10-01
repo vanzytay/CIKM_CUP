@@ -391,15 +391,17 @@ First XG Boost is to predict top pairs from the knn candidates
 # train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz',
 # 		     'candidates/candidate_pairs.nn.100.train-98k.domain-only.no-duplicate.group.doc2vec.json.gz']
 
-train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
+train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
+,'candidates/candidate_pairs.nn.100.train-98k.domain-only.no-duplicate.doc2vec.json.gz'
+,'candidates/candidate_pairs.nn.100.train-98k.word2vec.json.gz']
 
-nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),5) for m in train_candidate_sets]
+nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in train_candidate_sets]
 order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
 
 # Build the train and test data xgb1	
 
 nn_pairs= []
-for ps in nn_pairs_lst:
+for ps in nn_pairs_lst[:1]: #!!! skip embedding candidates
 	nn_pairs += ps
 nn_pairs = filter_nn_pairs(nn_pairs)
 random.shuffle(nn_pairs)
@@ -523,7 +525,9 @@ TOP_PAIRS_NB = 40000
 # 		     'candidates/candidate_pairs.nn.100.test-98k.domain-only.no-duplicate.group.doc2vec.json.gz'
 # ]#'candidates/candidate_pairs.nn.100.test-100k.word2vec.json.gz']
 
-dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz']
+dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
+,'candidates/candidate_pairs.nn.100.test-98k.domain-only.no-duplicate.doc2vec.json.gz'
+,'candidates/candidate_pairs.nn.100.test-98k.word2vec.json.gz']
 
 def predict_by_rf(rf_model, candidates_sets, strict_mode, nn_pairs=None):
 	'''
@@ -540,7 +544,7 @@ def predict_by_rf(rf_model, candidates_sets, strict_mode, nn_pairs=None):
 		nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in candidates_sets]
 		order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
 		nn_pairs= []
-		for ps in nn_pairs_lst:
+		for ps in nn_pairs_lst[:1]: #!!! skip embedding candidates
 			nn_pairs += ps
 
 		nn_pairs = filter_nn_pairs(nn_pairs)
@@ -650,8 +654,9 @@ PREDICT ON REAL TEST DATA
 # 		     'candidates/candidate_pairs.nn.100.test.domain-only.no-duplicate.group.doc2vec.json.gz'
 # ]
 
-test_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz']
-
+test_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz'
+,'candidates/candidate_pairs.nn.100.test.domain-only.no-duplicate.group.doc2vec.json.gz'
+,'candidates/candidate_pairs.nn.100.test.word2vec.json.gz']
 
 XGB1_results = predict_by_rf(xgb1, test_candidate_sets, False, None)
 
