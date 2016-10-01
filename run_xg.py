@@ -28,19 +28,19 @@ args = parser.parse_args()
 
 feature_index = None
 
-# def normalize_click(a):
-# 	return np.true_divide(a,np.sum(a)) if np.sum(a)!=0 else 0
+def normalize_click(a):
+	return np.true_divide(a,np.sum(a)) if np.sum(a)!=0 else 0
 
-# user_features = dictFromFileUnicodeNormal('features/user_features.json.gz')
-# all_users = set(user_features.keys())
-# timer = ProgressBar(title="Normalizing click")
-# for uid in all_users:
-# 	timer.tick()
-# 	# print(user_features[uid])
-# 	user_features[uid]['click_count_day_time'] = np.array(user_features[uid]['click_count_day_time'])
-# 	user_features[uid]['click_count_time'] = np.array(user_features[uid]['click_count_time'])
-# 	user_features[uid]['click_count_day_time_normalized'] = normalize_click(user_features[uid]['click_count_day_time'])
-# 	user_features[uid]['click_count_time_normalized'] = normalize_click(user_features[uid]['click_count_time'])
+user_features = dictFromFileUnicodeNormal('features/user_features.json.gz')
+all_users = set(user_features.keys())
+timer = ProgressBar(title="Normalizing click")
+for uid in all_users:
+	timer.tick()
+	# print(user_features[uid])
+	user_features[uid]['click_count_day_time'] = np.array(user_features[uid]['click_count_day_time'])
+	user_features[uid]['click_count_time'] = np.array(user_features[uid]['click_count_time'])
+	user_features[uid]['click_count_day_time_normalized'] = normalize_click(user_features[uid]['click_count_day_time'])
+	user_features[uid]['click_count_time_normalized'] = normalize_click(user_features[uid]['click_count_time'])
 
 
 def click_distribution_similarity(dt1, dt2):
@@ -99,23 +99,23 @@ def getDoc2VecFeatures(u1, u2, mdl, v1, v2):
 		:Orders of U1 in U2 and U2 in U1
 	'''
 	try:
-		u1_knn = mdl.docvecs.most_similar(u1, topn=10)
-		u2_knn = mdl.docvecs.most_similar(u2, topn=10)
+		# u1_knn = mdl.docvecs.most_similar(u1, topn=10)
+		# u2_knn = mdl.docvecs.most_similar(u2, topn=10)
 		cos = mdl.docvecs.similarity(u1, u2)
 		euc = euclidean_distances([v1],[v2])[0][0]
 		mhd = manhattan_distances([v1],[v2])[0][0]
 		# Get vectors
-		orders_1 = [str(x[0]) for x in u1_knn]
-		orders_2 = [str(x[0]) for x in u2_knn]
-		order_u2_in_u1, order_u1_in_u2 = -1, -1
-		if(u2 in orders_1):
-			order_u2_in_u1 = orders_1.index(u2)
-		if(u1 in orders_2):
-			order_u1_in_u2 = orders_2.index(u1)
+		# orders_1 = [str(x[0]) for x in u1_knn]
+		# orders_2 = [str(x[0]) for x in u2_knn]
+		# order_u2_in_u1, order_u1_in_u2 = -1, -1
+		# if(u2 in orders_1):
+		# 	order_u2_in_u1 = orders_1.index(u2)
+		# if(u1 in orders_2):
+		# 	order_u1_in_u2 = orders_2.index(u1)
 	except:
 		# pass
 		return None
-	return [order_u2_in_u1, order_u1_in_u2, cos, euc, mhd]
+	return [cos, euc, mhd]
 
 def extract_feature_for_pair_users(uid1, uid2):
 	# if random.randint(1, 2)==2:
@@ -128,33 +128,33 @@ def extract_feature_for_pair_users(uid1, uid2):
 	feature_columns = []
 
 	features = []
-	# f1 = user_features[uid1]
-	# f2 = user_features[uid2]
+	f1 = user_features[uid1]
+	f2 = user_features[uid2]
 
-	# # -----------Click Count Day Time---------------------# 
-	# click_count_day_time = f1['click_count_day_time'].tolist() + f2['click_count_day_time'].tolist()
-	# features += click_count_day_time
+	# -----------Click Count Day Time---------------------# 
+	click_count_day_time = f1['click_count_day_time'].tolist() + f2['click_count_day_time'].tolist()
+	features += click_count_day_time
 	
-	# # -----------Click Count Time---------------------# 
-	# click_count_time = f1['click_count_time'].tolist() + f2['click_count_time'].tolist()
-	# features+=click_count_time
+	# -----------Click Count Time---------------------# 
+	click_count_time = f1['click_count_time'].tolist() + f2['click_count_time'].tolist()
+	features+=click_count_time
 
-	# # ------------DIFF click count day time-----------#
-	# diff_click_count_day_time = np.absolute((f1['click_count_day_time'] - f2['click_count_day_time'])).tolist()
-	# features += diff_click_count_day_time
+	# ------------DIFF click count day time-----------#
+	diff_click_count_day_time = np.absolute((f1['click_count_day_time'] - f2['click_count_day_time'])).tolist()
+	features += diff_click_count_day_time
 
-	# # ------------DIFF click count time-----------#
-	# diff_click_count_time = np.absolute((f1['click_count_time'] - f2['click_count_time'])).tolist()
-	# features+=diff_click_count_time
+	# ------------DIFF click count time-----------#
+	diff_click_count_time = np.absolute((f1['click_count_time'] - f2['click_count_time'])).tolist()
+	features+=diff_click_count_time
 
-	# #not really help, reduce recall abit
-	# #-------------------Click_Count_Time_Normalized---#
-	# click_count_time_normalized = f1['click_count_time_normalized'].tolist() + f2['click_count_time_normalized'].tolist()
-	# features += click_count_time_normalized
+	#not really help, reduce recall abit
+	#-------------------Click_Count_Time_Normalized---#
+	click_count_time_normalized = f1['click_count_time_normalized'].tolist() + f2['click_count_time_normalized'].tolist()
+	features += click_count_time_normalized
 
-	# #not really help, reduce recall abit
-	# click_count_day_time_normalized = f1['click_count_day_time_normalized'].tolist() + f2['click_count_day_time_normalized'].tolist()
-	# features+= click_count_day_time_normalized
+	#not really help, reduce recall abit
+	click_count_day_time_normalized = f1['click_count_day_time_normalized'].tolist() + f2['click_count_day_time_normalized'].tolist()
+	features+= click_count_day_time_normalized
 
 	
 	# remove=> increase P but reduce R abit, f1 increaes abit
@@ -197,7 +197,7 @@ def extract_feature_for_pair_users(uid1, uid2):
 		v2 = doc2vec_model_h1.docvecs['USER_'+str(uid2)]
 		_f = getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h1, v1, v2)
 	except:
-		_f = [-1,-1,-1,-1,-1]
+		_f = [-1,-1,-1]
 
 	features += _f
 
@@ -207,7 +207,7 @@ def extract_feature_for_pair_users(uid1, uid2):
 		v2 = doc2vec_model_h2.docvecs['USER_'+str(uid2)]		
 		_f = getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h2, v1, v2)
 	except:
-		_f = [-1,-1,-1,-1,-1] 
+		_f = [-1,-1,-1] 
 
 	features += _f
 
@@ -218,7 +218,7 @@ def extract_feature_for_pair_users(uid1, uid2):
 		v2 = doc2vec_model_h3.docvecs['USER_'+str(uid2)]
 		_f = getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h3, v1, v2)
 	except:
-		_f = [-1,-1,-1,-1,-1] 
+		_f = [-1,-1,-1] 
 	features +=_f 
 
 	
@@ -230,7 +230,7 @@ def extract_feature_for_pair_users(uid1, uid2):
 		v2 = doc2vec_model_concat.docvecs['USER_'+str(uid2)]
 		_f = getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_concat, v1, v2)
 	except:
-		_f = [-1,-1,-1,-1,-1]  
+		_f = [-1,-1,-1]  
 	features += _f
 
 	#------------Word-Lvl Doc2vec------------------------------#
@@ -241,7 +241,7 @@ def extract_feature_for_pair_users(uid1, uid2):
 		v2 = word_model.docvecs['USER_'+str(uid2)]
 		_f = getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), word_model, v1, v2)
 	except:
-		_f = [-1,-1,-1,-1,-1] 
+		_f = [-1,-1,-1] 
 	features += _f
 		
 	# if(feature_index is None):
@@ -544,7 +544,7 @@ def predict_by_rf(rf_model, candidates_sets, strict_mode, nn_pairs=None):
 		nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in candidates_sets]
 		order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
 		nn_pairs= []
-		for ps in nn_pairs_lst[:1]: #!!! skip embedding candidates
+		for ps in nn_pairs_lst[:1]: # !!! skip embedding candidates
 			nn_pairs += ps
 
 		nn_pairs = filter_nn_pairs(nn_pairs)
