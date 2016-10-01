@@ -18,6 +18,7 @@ from shared.ordered_object import *
 from shared.utilities import *
 from sklearn.metrics.pairwise import euclidean_distances
 from sklearn.metrics.pairwise import manhattan_distances
+from tqdm import tqdm
 
 # Set up args parser
 parser = argparse.ArgumentParser()
@@ -98,8 +99,8 @@ def getDoc2VecFeatures(u1, u2, mdl, v1, v2):
 		:Orders of U1 in U2 and U2 in U1
 	'''
 	try:
-		u1_knn = mdl.docvecs.most_similar(u1, topn=100)
-		u2_knn = mdl.docvecs.most_similar(u2, topn=100)
+		u1_knn = mdl.docvecs.most_similar(u1, topn=10)
+		u2_knn = mdl.docvecs.most_similar(u2, topn=10)
 		cos = mdl.docvecs.similarity(u1, u2)
 		euc = euclidean_distances([v1],[v2])[0][0]
 		mhd = manhattan_distances([v1],[v2])[0][0]
@@ -113,7 +114,7 @@ def getDoc2VecFeatures(u1, u2, mdl, v1, v2):
 			order_u1_in_u2 = orders_2.index(u1)
 	except:
 		# pass
-		return [-1,-1,-1,-1,-1]
+		return None
 	return [order_u2_in_u1, order_u1_in_u2, cos, euc, mhd]
 
 def extract_feature_for_pair_users(uid1, uid2):
@@ -187,42 +188,61 @@ def extract_feature_for_pair_users(uid1, uid2):
 
 	features.append(cos)
 
-
 	#------------Doc2vec Higher Level x 1------------------------------#
 
 	
 	# TY: My word_level model uses USER_ + ID as label id
-	v1 = doc2vec_model_h1.docvecs['USER_'+str(uid1)]
-	v2 = doc2vec_model_h1.docvecs['USER_'+str(uid2)]
-	features += getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h1, v1, v2)
+	try:
+		v1 = doc2vec_model_h1.docvecs['USER_'+str(uid1)]
+		v2 = doc2vec_model_h1.docvecs['USER_'+str(uid2)]
+		_f = getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h1, v1, v2)
+	except:
+		_f = [-1,-1,-1,-1,-1]
 
+	features += _f
 
 	#------------Doc2vec Higher Level x 2------------------------------#
+	try:
+		v1 = doc2vec_model_h2.docvecs['USER_'+str(uid1)]
+		v2 = doc2vec_model_h2.docvecs['USER_'+str(uid2)]		
+		_f = getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h2, v1, v2)
+	except:
+		_f = [-1,-1,-1,-1,-1] 
 
-	v1 = doc2vec_model_h2.docvecs['USER_'+str(uid1)]
-	v2 = doc2vec_model_h2.docvecs['USER_'+str(uid2)]		
-	features += getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h2, v1, v2)
+	features += _f
 
 	#------------Doc2vec Higher Level x 3------------------------------#
 
-	v1 = doc2vec_model_h3.docvecs['USER_'+str(uid1)]
-	v2 = doc2vec_model_h3.docvecs['USER_'+str(uid2)]
-	features += getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h3, v1, v2)
+	try:
+		v1 = doc2vec_model_h3.docvecs['USER_'+str(uid1)]
+		v2 = doc2vec_model_h3.docvecs['USER_'+str(uid2)]
+		_f = getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h3, v1, v2)
+	except:
+		_f = [-1,-1,-1,-1,-1] 
+	features +=_f 
+
 	
 
 	#------------Doc2vec Level 0 Concat ------------------------------#
 
-	v1 = doc2vec_model_concat.docvecs['USER_'+str(uid1)]
-	v2 = doc2vec_model_concat.docvecs['USER_'+str(uid2)]
-	features += getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_concat, v1, v2)
-	
+	try:
+		v1 = doc2vec_model_concat.docvecs['USER_'+str(uid1)]
+		v2 = doc2vec_model_concat.docvecs['USER_'+str(uid2)]
+		_f = getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_concat, v1, v2)
+	except:
+		_f = [-1,-1,-1,-1,-1]  
+	features += _f
 
 	#------------Word-Lvl Doc2vec------------------------------#
 	
 	# TY: My word_level model uses USER_ + ID as label id
-	v1 = word_model.docvecs['USER_'+str(uid1)]
-	v2 = word_model.docvecs['USER_'+str(uid2)]
-	features += getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), word_model, v1, v2)
+	try:
+		v1 = word_model.docvecs['USER_'+str(uid1)]
+		v2 = word_model.docvecs['USER_'+str(uid2)]
+		_f = getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), word_model, v1, v2)
+	except:
+		_f = [-1,-1,-1,-1,-1] 
+	features += _f
 		
 	# if(feature_index is None):
 	# 	# This should be done once only! 
@@ -250,7 +270,7 @@ def extract_feature_for_pair_users(uid1, uid2):
 
 def get_features_for_samples(sample_pairs, golden_edges):
 	samples = []
-	for pair in sample_pairs:
+	for pair in tqdm(sample_pairs):
 		# !!! duplication
 		uid1,uid2 = pair[0], pair[1]
 		samples.append([uid1,uid2,int((min(uid1,uid2),max(uid1,uid2)) in golden_edges)] + extract_feature_for_pair_users(uid1,uid2))
@@ -427,13 +447,23 @@ YY = [e[2] for e in samples_test]
 
 # Train xgb1
 
+# Clean up to save memory
+# Load doc2vec ensemble!
+print("Cleaning doc2vec ensemble to save memory! (Will load again later)")
+doc2vec_model = None
+doc2vec_model_h1 = None
+doc2vec_model_h2 = None
+doc2vec_model_h3 = None
+doc2vec_model_concat = None
+word_model = None
+
 timer = ProgressBar(title="Running XG Boost")
 
 samples_train = None
 
 xgb1 = XGBClassifier(
  learning_rate =0.01,
- n_estimators=2500,
+ n_estimators=3500,
  max_depth=5,
  min_child_weight=1,
  gamma=0,
@@ -462,6 +492,16 @@ print "R[class-1] = {}".format(recall_score(YY, YY_result, pos_label=1, average=
 print "F1[class-1] = {}".format(f1_score(YY, YY_result, pos_label=1, average='binary'))
 print "Golden_count={}; Predict_count={}".format(sum(YY), sum(YY_result))
 
+# Load doc2vec ensemble!
+print("Reloading Doc2Vec Ensemble!")
+doc2vec_model = Doc2Vec.load('models/user-url.d.400.w.8.minf.1.filtered-urls.5trains.doc2vec')
+doc2vec_model_h1 = Doc2Vec.load('models/mdl_urls_300_w5_h1.d2v')
+doc2vec_model_h2 = Doc2Vec.load('models/mdl_urls_300_w10_h2.d2v')
+doc2vec_model_h3 = Doc2Vec.load('models/mdl_urls_300_w10_h3.d2v')
+doc2vec_model_concat = Doc2Vec.load('models/mdl_urls_300_concat.d2v')
+word_model = Doc2Vec.load('models/mdl_word.d2v')
+
+
 # print("Fitting XGB[2]")
 # xgb2.fit(np.array(XX),np.array(YY), verbose=True)
 
@@ -478,7 +518,7 @@ Build second Random Forest
 Training pairs will be the top 50000 pairs from the last step and the pairs extended from them
 '''
 
-TOP_PAIRS_NB = 50000
+TOP_PAIRS_NB = 40000
 # dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz',
 # 		     'candidates/candidate_pairs.nn.100.test-98k.domain-only.no-duplicate.group.doc2vec.json.gz'
 # ]#'candidates/candidate_pairs.nn.100.test-100k.word2vec.json.gz']

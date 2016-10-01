@@ -92,7 +92,6 @@ def get_time_overalap(u1,u2,interval, thrs):
 				c[thr]+=1
 	return [c[thr] for thr in thrs]
 
-
 def extract_feature_for_pair_users(uid1, uid2):
 	# if random.randint(1, 2)==2:
 	# 	tmp = uid1
@@ -238,7 +237,7 @@ def extract_feature_for_pair_users(uid1, uid2):
 
 def get_features_for_samples(sample_pairs, golden_edges):
 	samples = []
-	for pair in sample_pairs:
+	for pair in tqdm(sample_pairs):
 		# !!! duplication
 		uid1,uid2 = pair[0], pair[1]
 		samples.append([uid1,uid2,int((min(uid1,uid2),max(uid1,uid2)) in golden_edges)] + extract_feature_for_pair_users(uid1,uid2))
