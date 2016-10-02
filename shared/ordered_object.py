@@ -52,7 +52,7 @@ class OrderClass:
 		except:
 			score = 3
 
-		return [order1,order2, score]#, int (order1!=101 and order2!=101), int (score>0), int (order1<=15 and order2<=15)]
+		return [order1,order2, score, int (order1!=101 or order2!=101)]#, int (order1!=101 and order2!=101), int (score>0), int (order1<=15 and order2<=15)]
 
 def filter_nn_pairs(nn_pairs):
 	'''
