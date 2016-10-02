@@ -283,11 +283,13 @@ def get_features_for_samples_test(sample_pairs):
 		samples.append(extract_feature_for_pair_users(uid1,uid2))
 	return samples
 
-def write_to_file(results, filename):
+def write_to_file(results, filename, with_scores=False):
 	with open(filename,'w') as f:
 		for _ in results:
-			f.write("{},{}\n".format(_[0],_[1]))
-
+			if not with_scores:
+				f.write("{},{}\n".format(_[0],_[1]))
+			else:
+				f.write("{},{},{}\n".format(_[0],_[1],_[2]))
 
 def evaluate_on_test_98k(results):
 	'''
@@ -299,7 +301,7 @@ def evaluate_on_test_98k(results):
 			uid1, uid2 = line.strip().split(',')
 			golden_edges.add((min(uid1, uid2),max(uid1, uid2)))
 	
-	print "Len golden_pairs = {}".format(golden_edges)
+	# print "Len golden_pairs = {}".format(golden_edges)
 	golden_edges_lst = list(golden_edges)
 	random.shuffle(golden_edges_lst)
 	golden_edges_half = set(golden_edges_lst[:int(len(golden_edges)/2)])
@@ -401,7 +403,7 @@ order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
 # Build the train and test data xgb1	
 
 nn_pairs= []
-for ps in nn_pairs_lst[:1]: #!!! skip embedding candidates
+for ps in nn_pairs_lst[:2]: #!!! skip embedding candidates
 	nn_pairs += ps
 nn_pairs = filter_nn_pairs(nn_pairs)
 random.shuffle(nn_pairs)
@@ -544,7 +546,7 @@ def predict_by_rf(rf_model, candidates_sets, strict_mode, nn_pairs=None):
 		nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in candidates_sets]
 		order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
 		nn_pairs= []
-		for ps in nn_pairs_lst[:1]: # !!! skip embedding candidates
+		for ps in nn_pairs_lst[:2]: # !!! skip embedding candidates
 			nn_pairs += ps
 
 		nn_pairs = filter_nn_pairs(nn_pairs)
@@ -599,8 +601,17 @@ results = predict_by_rf(xgb1, dev_candidates_sets, False, None)
 
 # If you don't use the inference part. Can ouput the results here. Note that the current results is for test_98k candidates file. 
 
+print("Evaluating on test 98k..")
 evaluate_on_test_98k(results[:100000])
+evaluate_on_test_98k(results[:110000])
+evaluate_on_test_98k(results[:125000])
+evaluate_on_test_98k(results[:150000])
+evaluate_on_test_98k(results[:180000])
 evaluate_on_test_98k(results[:200000])
+evaluate_on_test_98k(results[:210000])
+
+write_to_file(results[:215307], './dev_scores/dev_result_scores.txt', with_scores=True)
+
 
 # Extend top 50k pairs
 
