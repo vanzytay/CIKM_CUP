@@ -63,7 +63,7 @@ def filter_nn_pairs(nn_pairs):
 	for p in nn_pairs:
 		uid1, uid2 = min(p[0],p[1]), max(p[0],p[1])
 		if (uid1,uid2) not in s:
-			candidates.append((min(p[0],p[1]), max(p[0],p[1])))
+			candidates.append((uid2,uid2))
 			s.add((uid1, uid2))
 	return candidates
 
