@@ -30,18 +30,18 @@ class OrderClass:
 
 	def get_orders_infor(self,u,v):
 		try:
-			if u in self.orders[v].keys():
-				order2 = self.orders[u][v]
-			else:
-				order2 = 101
+			#if u in self.orders[v].keys():
+				order2 = self.orders[v][u]
+			#else:
+			#	order2 = 101
 		except:
 			order2 = 101
 
 		try:
-			if v in self.orders[u].keys():
+			#if v in self.orders[u].keys():
 				order1 = self.orders[u][v]
-			else:
-				order1 = 101
+			#else:
+			#	order1 = 101
 		except:
 			order1 = 101
 		
