@@ -67,7 +67,7 @@ doc2vec_model_h1 = Doc2Vec.load('models/mdl_urls_300_w5_h1.d2v')
 doc2vec_model_h2 = Doc2Vec.load('models/mdl_urls_300_w10_h2.d2v')
 doc2vec_model_h3 = Doc2Vec.load('models/mdl_urls_300_w10_h3.d2v')
 doc2vec_model_concat = Doc2Vec.load('models/mdl_urls_300_concat.d2v')
-word_model = Doc2Vec.load('models/mdl_word.d2v')
+# word_model = Doc2Vec.load('models/mdl_word.d2v') #duplicate
 
 def get_time_overalap(u1,u2,interval, thrs):
 	t1 = [e[1] for e in user_facts[u1]]
@@ -90,7 +90,7 @@ def get_time_overalap(u1,u2,interval, thrs):
 				c[thr]+=1
 	return [c[thr] for thr in thrs]
 
-def getDoc2VecFeatures(u1, u2, mdl, v1, v2):
+def getDoc2VecFeatures(u1, u2, mdl):
 	'''
 	Gets doc2vec Features 
 	returns 
@@ -99,22 +99,20 @@ def getDoc2VecFeatures(u1, u2, mdl, v1, v2):
 		:Orders of U1 in U2 and U2 in U1
 	'''
 	try:
-		# u1_knn = mdl.docvecs.most_similar(u1, topn=10)
-		# u2_knn = mdl.docvecs.most_similar(u2, topn=10)
 		cos = mdl.docvecs.similarity(u1, u2)
-		euc = euclidean_distances([v1],[v2])[0][0]
-		mhd = manhattan_distances([v1],[v2])[0][0]
-		# Get vectors
-		# orders_1 = [str(x[0]) for x in u1_knn]
-		# orders_2 = [str(x[0]) for x in u2_knn]
-		# order_u2_in_u1, order_u1_in_u2 = -1, -1
-		# if(u2 in orders_1):
-		# 	order_u2_in_u1 = orders_1.index(u2)
-		# if(u1 in orders_2):
-		# 	order_u1_in_u2 = orders_2.index(u1)
 	except:
-		# pass
-		return None
+		cos = -1
+
+	try:
+		euc = euclidean_distances([mdl.docvecs[u1]],[mdl.docvecs[u2]])[0][0]
+	except:
+		euc = -1
+
+	try:
+		mhd = manhattan_distances([mdl.docvecs[u1]],[mdl.docvecs[u2]])[0][0]
+	except:
+		mhd = -1
+
 	return [cos, euc, mhd]
 
 def extract_feature_for_pair_users(uid1, uid2):
@@ -189,60 +187,20 @@ def extract_feature_for_pair_users(uid1, uid2):
 	features.append(cos)
 
 	#------------Doc2vec Higher Level x 1------------------------------#
+	features += getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h1)
 
-	
-	# TY: My word_level model uses USER_ + ID as label id
-	try:
-		v1 = doc2vec_model_h1.docvecs['USER_'+str(uid1)]
-		v2 = doc2vec_model_h1.docvecs['USER_'+str(uid2)]
-		_f = getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h1, v1, v2)
-	except:
-		_f = [-1,-1,-1]
-
-	features += _f
 
 	#------------Doc2vec Higher Level x 2------------------------------#
-	try:
-		v1 = doc2vec_model_h2.docvecs['USER_'+str(uid1)]
-		v2 = doc2vec_model_h2.docvecs['USER_'+str(uid2)]		
-		_f = getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h2, v1, v2)
-	except:
-		_f = [-1,-1,-1] 
+	features += getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h2)
 
-	features += _f
 
 	#------------Doc2vec Higher Level x 3------------------------------#
-
-	try:
-		v1 = doc2vec_model_h3.docvecs['USER_'+str(uid1)]
-		v2 = doc2vec_model_h3.docvecs['USER_'+str(uid2)]
-		_f = getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h3, v1, v2)
-	except:
-		_f = [-1,-1,-1] 
-	features +=_f 
+	features +=getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_h3)
 
 	
-
 	#------------Doc2vec Level 0 Concat ------------------------------#
+	features +=getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_concat)
 
-	try:
-		v1 = doc2vec_model_concat.docvecs['USER_'+str(uid1)]
-		v2 = doc2vec_model_concat.docvecs['USER_'+str(uid2)]
-		_f = getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), doc2vec_model_concat, v1, v2)
-	except:
-		_f = [-1,-1,-1]  
-	features += _f
-
-	#------------Word-Lvl Doc2vec------------------------------#
-	
-	# TY: My word_level model uses USER_ + ID as label id
-	try:
-		v1 = word_model.docvecs['USER_'+str(uid1)]
-		v2 = word_model.docvecs['USER_'+str(uid2)]
-		_f = getDoc2VecFeatures('USER_'+str(uid1),'USER_'+str(uid2), word_model, v1, v2)
-	except:
-		_f = [-1,-1,-1] 
-	features += _f
 		
 	# if(feature_index is None):
 	# 	# This should be done once only! 
@@ -393,9 +351,14 @@ First XG Boost is to predict top pairs from the knn candidates
 # train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz',
 # 		     'candidates/candidate_pairs.nn.100.train-98k.domain-only.no-duplicate.group.doc2vec.json.gz']
 
-train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
-,'candidates/candidate_pairs.nn.100.train-98k.domain-only.no-duplicate.doc2vec.json.gz'
-,'candidates/candidate_pairs.nn.100.train-98k.word2vec.json.gz']
+train_candidate_sets=[
+	'candidates/candidate_pairs.baseline.nn.100.train-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
+	,'candidates/candidate_pairs.nn.100.train-98k.mdl_urls_300_w10_h3.d2v.json.gz'
+	,'candidates/candidate_pairs.nn.100.train-98k.mdl_urls_300_w10_h2.d2v.json.gz'
+	,'candidates/candidate_pairs.nn.100.train-98k.mdl_urls_300_w5_h1.d2v.json.gz'
+	,'candidates/candidate_pairs.nn.100.train-98k.domain-only.no-duplicate.doc2vec.json.gz'
+	,'candidates/candidate_pairs.nn.100.train-98k.user-url-title.word2vec.json.gz'
+]
 
 nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in train_candidate_sets]
 order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
@@ -527,9 +490,14 @@ TOP_PAIRS_NB = 40000
 # 		     'candidates/candidate_pairs.nn.100.test-98k.domain-only.no-duplicate.group.doc2vec.json.gz'
 # ]#'candidates/candidate_pairs.nn.100.test-100k.word2vec.json.gz']
 
-dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
-,'candidates/candidate_pairs.nn.100.test-98k.domain-only.no-duplicate.doc2vec.json.gz'
-,'candidates/candidate_pairs.nn.100.test-98k.word2vec.json.gz']
+dev_candidates_sets=[
+	'candidates/candidate_pairs.baseline.nn.100.test-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
+	,'candidates/candidate_pairs.nn.100.test-98k.mdl_urls_300_w10_h3.d2v.json.gz'
+	,'candidates/candidate_pairs.nn.100.test-98k.mdl_urls_300_w10_h2.d2v.json.gz'
+	,'candidates/candidate_pairs.nn.100.test-98k.mdl_urls_300_w5_h1.d2v.json.gz'
+	,'candidates/candidate_pairs.nn.100.test-98k.domain-only.no-duplicate.doc2vec.json.gz'
+	,'candidates/candidate_pairs.nn.100.test-98k.user-url-title.word2vec.json.gz'
+]
 
 def predict_by_rf(rf_model, candidates_sets, strict_mode, nn_pairs=None):
 	'''
@@ -665,9 +633,14 @@ PREDICT ON REAL TEST DATA
 # 		     'candidates/candidate_pairs.nn.100.test.domain-only.no-duplicate.group.doc2vec.json.gz'
 # ]
 
-test_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz'
-,'candidates/candidate_pairs.nn.100.test.domain-only.no-duplicate.group.doc2vec.json.gz'
-,'candidates/candidate_pairs.nn.100.test.word2vec.json.gz']
+test_candidate_sets=[
+	'candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz'
+	,'candidates/candidate_pairs.nn.100.test.mdl_urls_300_w10_h3.d2v.json.gz'
+	,'candidates/candidate_pairs.nn.100.test.mdl_urls_300_w10_h2.d2v.json.gz'
+	,'candidates/candidate_pairs.nn.100.test.mdl_urls_300_w5_h1.d2v.json.gz'
+	,'candidates/candidate_pairs.nn.100.test.domain-only.no-duplicate.doc2vec.json.gz'
+	,'candidates/candidate_pairs.nn.100.test.user-url-title.word2vec.json.gz'
+]
 
 XGB1_results = predict_by_rf(xgb1, test_candidate_sets, False, None)
 
