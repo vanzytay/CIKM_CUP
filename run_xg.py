@@ -363,8 +363,8 @@ train_candidate_sets=[
 # nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in train_candidate_sets]
 # order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
 
-nn_pairs_lst = [filter_order_list(dictFromFileUnicode(train_candidate_sets[0]),18)] + [filter_order_list(dictFromFileUnicode(_),10) for _ in train_candidate_sets[1:]]
-order_objs = [OrderClass(dictFromFileUnicode(_)) for _ in train_candidate_sets]
+nn_pairs_lst = [filter_order_list(dictFromFileUnicode(train_candidate_sets[0]),18)] + [filter_order_list(dictFromFileUnicode(_),5) for _ in train_candidate_sets[1:]]
+order_objs = [OrderClass(filter_order_list(dictFromFileUnicode(_),60)) for _ in train_candidate_sets[:1]]+[OrderClass(filter_order_list(dictFromFileUnicode(_),15)) for _ in train_candidate_sets[1:]]
 
 # Build the train and test data xgb1	
 
@@ -518,8 +518,8 @@ def predict_by_rf(rf_model, candidates_sets, strict_mode, nn_pairs=None):
 		#nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in candidates_sets]
 		#order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
 		
-		nn_pairs_lst = [filter_order_list(dictFromFileUnicode(candidates_sets[0]),18)] + [filter_order_list(dictFromFileUnicode(_),10) for _ in candidates_sets[1:]]
-		order_objs = [OrderClass(dictFromFileUnicode(_)) for _ in candidates_sets]
+		nn_pairs_lst = [filter_order_list(dictFromFileUnicode(candidates_sets[0]),18)] + [filter_order_list(dictFromFileUnicode(_),5) for _ in candidates_sets[1:]]
+		order_objs = [OrderClass(filter_order_list(dictFromFileUnicode(_),60)) for _ in candidates_sets[:1]]+[OrderClass(filter_order_list(dictFromFileUnicode(_),15)) for _ in candidates_sets[1:]]
 		
 		nn_pairs= []
 		for ps in nn_pairs_lst: # !!! skip embedding candidates
