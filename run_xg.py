@@ -42,24 +42,29 @@ for uid in all_users:
 	user_features[uid]['click_count_day_time_normalized'] = normalize_click(user_features[uid]['click_count_day_time'])
 	user_features[uid]['click_count_time_normalized'] = normalize_click(user_features[uid]['click_count_time'])
 
+#load time of event
+user_click_times = defaultdict(list)
 
-def click_distribution_similarity(dt1, dt2):
-	return np.linalg.norm(dt1-dt2)
+from datetime import datetime
+timer = ProgressBar(title="Reading facts.json")
+with open('facts.json','r') as f:
+	for line in f:
+		timer.tick()
+		js = json.loads(line.strip())
 
-MAX_SIM = 1000000000
-def click_distribution_similarity_KL(dt1, dt2):
-	'''
-	Kullback-Leibler divergence
-	'''
-	r = np.true_divide(dt1, dt2)
-	for i,e in enumerate(r):
-		if e==np.inf:
-			r[i] = 20
-		elif e==np.nan:
-			r[i] = 0
-	r = np.multiply(r,dt1)
-	sum = np.sum(r)
-	return min(MAX_SIM,1/sum) if sum!=0 else MAX_SIM 
+		# for each userID
+		uid = js['uid']
+		for fact in js['facts']:
+			ts = fact['ts']
+			if ts>9999999999999:
+				ts = ts/1000
+			ts = ts/1000	
+			user_click_times[uid].append(ts)
+
+for uid in user_click_times.keys():
+	user_click_times[uid] = sorted(user_click_times[uid])
+
+timer.finish()
 
 # Load doc2vec ensemble!
 doc2vec_model = Doc2Vec.load('models/user-url.d.400.w.8.minf.1.filtered-urls.5trains.doc2vec')
@@ -67,28 +72,25 @@ doc2vec_model_h1 = Doc2Vec.load('models/mdl_urls_300_w5_h1.d2v')
 doc2vec_model_h2 = Doc2Vec.load('models/mdl_urls_300_w10_h2.d2v')
 doc2vec_model_h3 = Doc2Vec.load('models/mdl_urls_300_w10_h3.d2v')
 doc2vec_model_concat = Doc2Vec.load('models/mdl_urls_300_concat.d2v')
-# word_model = Doc2Vec.load('models/mdl_word.d2v') #duplicate
 
-def get_time_overalap(u1,u2,interval, thrs):
-	t1 = [e[1] for e in user_facts[u1]]
-	t2 = [e[1] for e in user_facts[u2]]
-	mint = min(min(t1),min(t2))
-	t1 = [e - mint for e in t1]
-	t2 = [e - mint for e in t2]
-	bin1 = defaultdict(int)
-	bin2 = defaultdict(int)
-	for e in t1:
-		bin1[int(e/interval)]+=1
-	for e in t2:
-		bin2[int(e/interval)]+=1
+def get_time_overalap(u1,u2,interval):
+	t1 = user_click_times[u1]
+	t2 = user_click_times[u2]
+	i1 = 0
+	i2 = 0
+	count = 0
+	while i1<len(t1):
+		i22 = i2
+		while i22>=0 and (t1[i1]-t2[i22])<=interval:
+			i22-=1
+			count+=1
 
-	ovl_k = set(bin1.keys())&set(bin2.keys())
-	c = defaultdict(int)
-	for k in ovl_k:
-		for thr in thrs:
-			if bin1[k]>=thr and bin2[k]>=thr:
-				c[thr]+=1
-	return [c[thr] for thr in thrs]
+		while i2+1<len(t2) and abs(t1[i1]-t2[i2+1])<=interval:
+			i2+=1
+			count+=1
+
+		i1+=1
+	return count
 
 def getDoc2VecFeatures(u1, u2, mdl):
 	'''
@@ -128,7 +130,17 @@ def extract_feature_for_pair_users(uid1, uid2):
 	features = []
 	f1 = user_features[uid1]
 	f2 = user_features[uid2]
+	
+	features += [np.sum(f1['click_count_day_time'])]
+	features += [np.sum(f2['click_count_day_time'])] 
+	features += [np.sum(f1['click_count_day_time'])+ np.sum(f2['click_count_day_time'])]
+	features += [np.abs([np.sum(f1['click_count_day_time'])- np.sum(f2['click_count_day_time'])])]
 
+	features += [np.sum(f1['click_count_time'])]
+	features += [np.sum(f2['click_count_time'])] 
+	features += [np.sum(f1['click_count_time'])+np.sum(f2['click_count_time'])] 
+	features += [np.abs([np.sum(f1['click_count_time'])- np.sum(f2['click_count_time'])])]
+	
 	# -----------Click Count Day Time---------------------# 
 	click_count_day_time = f1['click_count_day_time'].tolist() + f2['click_count_day_time'].tolist()
 	features += click_count_day_time
@@ -153,20 +165,6 @@ def extract_feature_for_pair_users(uid1, uid2):
 	#not really help, reduce recall abit
 	click_count_day_time_normalized = f1['click_count_day_time_normalized'].tolist() + f2['click_count_day_time_normalized'].tolist()
 	features+= click_count_day_time_normalized
-
-	
-	# remove=> increase P but reduce R abit, f1 increaes abit
-	# features.append(click_distribution_similarity(cc_dt_n1, cc_dt_n2))
-	# features.append(click_distribution_similarity(cc_t_n1, cc_t_n2))
-
-	# not really important
-	# remove=> increase P but reduce R abit, f1 increaes abit
-	# cc_t_n1 = f1['click_count_time_normalized']
-	# cc_t_n2 = f2['click_count_time_normalized']
-	# cc_dt_n1 = f1['click_count_day_time_normalized']
-	# cc_dt_n2 = f2['click_count_day_time_normalized']
-	# features.append(click_distribution_similarity_KL(cc_dt_n1, cc_dt_n2))
-	# features.append(click_distribution_similarity_KL(cc_t_n1, cc_t_n2))
 
 	#-------------------TF-IDF features--------------------------#
 	order_objs_lens = []
@@ -224,6 +222,11 @@ def extract_feature_for_pair_users(uid1, uid2):
 	# 	print("Total features: %d",len(features))
 	# 	feature_index = feature_columns
 	# features+=get_time_overalap(uid1,uid2,60,[1,5,10,30])
+	
+	features+=[get_time_overalap(uid1,uid2,5)]
+	features+=[get_time_overalap(uid1,uid2,10)]
+	features+=[get_time_overalap(uid1,uid2,60)]
+	
 	return features 
 
 def get_features_for_samples(sample_pairs, golden_edges):
@@ -348,9 +351,6 @@ Setting up XG Boost
 First XG Boost is to predict top pairs from the knn candidates
 '''
 
-# train_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.train-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz',
-# 		     'candidates/candidate_pairs.nn.100.train-98k.domain-only.no-duplicate.group.doc2vec.json.gz']
-
 train_candidate_sets=[
 	'candidates/candidate_pairs.baseline.nn.100.train-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
 	,'candidates/candidate_pairs.nn.100.train-98k.mdl_urls_300_w10_h3.d2v.json.gz'
@@ -359,9 +359,6 @@ train_candidate_sets=[
 	,'candidates/candidate_pairs.nn.100.train-98k.domain-only.no-duplicate.doc2vec.json.gz'
 	,'candidates/candidate_pairs.nn.100.train-98k.user-url-title.word2vec.json.gz'
 ]
-
-# nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in train_candidate_sets]
-# order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
 
 nn_pairs_lst = [filter_order_list(dictFromFileUnicode(train_candidate_sets[0]),18)] + [filter_order_list(dictFromFileUnicode(_),10) for _ in train_candidate_sets[1:]]
 order_objs = [OrderClass(filter_order_list(dictFromFileUnicode(_),60)) for _ in train_candidate_sets[:1]]+[OrderClass(filter_order_list(dictFromFileUnicode(_),15)) for _ in train_candidate_sets[1:]]
@@ -475,26 +472,12 @@ doc2vec_model_concat = Doc2Vec.load('models/mdl_urls_300_concat.d2v')
 word_model = Doc2Vec.load('models/mdl_word.d2v')
 
 
-# print("Fitting XGB[2]")
-# xgb2.fit(np.array(XX),np.array(YY), verbose=True)
-
-# print("Predicting XGB[2] on hold out set")
-# Y_result = xgb2.predict(X)
-# print "P[class-1] = {}".format(precision_score(Y, Y_result, pos_label=1, average='binary'))
-# print "R[class-1] = {}".format(recall_score(Y, Y_result, pos_label=1, average='binary'))
-# print "F1[class-1] = {}".format(f1_score(Y, Y_result, pos_label=1, average='binary'))
-# print "Golden_count={}; Predict_count={}".format(sum(Y), sum(Y_result))
-
-
 '''
 Build second Random Forest
 Training pairs will be the top 50000 pairs from the last step and the pairs extended from them
 '''
 
 TOP_PAIRS_NB = 40000
-# dev_candidates_sets=['candidates/candidate_pairs.baseline.nn.100.test-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz',
-# 		     'candidates/candidate_pairs.nn.100.test-98k.domain-only.no-duplicate.group.doc2vec.json.gz'
-# ]#'candidates/candidate_pairs.nn.100.test-100k.word2vec.json.gz']
 
 dev_candidates_sets=[
 	'candidates/candidate_pairs.baseline.nn.100.test-98k.with-orders.tf-scaled.full-hierarchy.3.json.gz'
@@ -584,17 +567,17 @@ results = predict_by_rf(xgb1, dev_candidates_sets, False, None)
 print("Evaluating on test 98k..")
 evaluate_on_test_98k(results[:100000])
 evaluate_on_test_98k(results[:110000])
+evaluate_on_test_98k(results[:115000])
+evaluate_on_test_98k(results[:120000])
 evaluate_on_test_98k(results[:125000])
-evaluate_on_test_98k(results[:150000])
-evaluate_on_test_98k(results[:180000])
-evaluate_on_test_98k(results[:200000])
+evaluate_on_test_98k(results[:130000])
 evaluate_on_test_98k(results[:210000])
 
 write_to_file(results[:215307], './dev_scores/dev_result_scores.txt', with_scores=True)
 
 
 # Extend top 50k pairs
-
+TOP_PAIRS_NB = 45000
 ext_pairs = extend_pairs(results[:TOP_PAIRS_NB])
 
 # Build XGB2 on the extended pairs
@@ -627,11 +610,6 @@ xgb2 = XGBClassifier(
 print("Fitting XGB[2]")
 xgb2.fit(np.array(X),np.array(Y), verbose=True)
 
-# XGB2_model = RandomForestClassifier(n_estimators=200, n_jobs=-1)
-# scores = cross_validation.cross_val_score(XGB2_model, X, Y, cv=5)
-# print "5-Fold score = {}".format(np.mean(scores))
-# XGB2_model.fit(X, Y)
-
 '''
 PREDICT ON REAL TEST DATA
 	1. Candidate pairs filtering by knn
@@ -641,9 +619,6 @@ PREDICT ON REAL TEST DATA
 	the help of second RF classifier to take vote where 2 cluster should be merged
 '''
 
-# test_candidate_sets=['candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz',
-# 		     'candidates/candidate_pairs.nn.100.test.domain-only.no-duplicate.group.doc2vec.json.gz'
-# ]
 
 test_candidate_sets=[
 	'candidates/candidate_pairs.baseline.nn.100.test.with-orders.tf-scaled.full-hierarchy.3.json.gz'
@@ -656,57 +631,61 @@ test_candidate_sets=[
 
 XGB1_results = predict_by_rf(xgb1, test_candidate_sets, False, None)
 
-write_to_file(XGB1_results[:215307], 'result_ordered.submit.txt')
+write_to_file(XGB1_results[:215307], 'result_ordered.submit.txt',False)
+write_to_file(XGB1_results[:215307], 'result_ordered.score.txt',True)
 
 ext_pairs = extend_pairs(XGB1_results[:TOP_PAIRS_NB])
 print "Number of extended pairs {}".format(len(ext_pairs))
 
-# Caching score of XGB2 prediction
-results_ext_scores = defaultdict(float)
-for _ in predict_by_rf(xgb2, test_candidate_sets, False, nn_pairs=ext_pairs):
-	results_ext_scores[(_[0],_[1])] = _[2]
 
 # Hierarchical merging
-
-r = defaultdict(lambda: -1)
-
 def get_root(u,r):
 	while r[u]!=-1:
 		u = r[u]
 	return u
 
-cluster = defaultdict(set)
-for p in XGB1_results[:TOP_PAIRS_NB]:
-	cluster[p[0]] = set([p[0]])
-	cluster[p[1]] = set([p[1]])
+for TOP_PAIRS_NB in [35000,40000,45000,50000]:
 
-XGB2_ext_pairs = []
-timer = ProgressBar(title="Extending pairs")
-for p in XGB1_results[:TOP_PAIRS_NB]:
-	timer.tick()
-	ru = get_root(p[0],r)
-	rv = get_root(p[1],r)
-	if ru!=rv:
-		clusters_pairs = []
-		p_count = 0
-		c_score = 0
-		for u in cluster[ru]:
-			for v in cluster[rv]:
-				p_count +=1
-				c_score += results_ext_scores[(min(u,v),max(u,v))]
-				clusters_pairs.append((min(u,v),max(u,v)))
-		confidences = float(c_score)/p_count
-		if ((confidences >= 0.3) and (len(cluster[ru]) + len(cluster[rv])<50)) or (len(cluster[ru]) + len(cluster[rv])<=3):
-			XGB2_ext_pairs += clusters_pairs
+	ext_pairs = extend_pairs(XGB1_results[:TOP_PAIRS_NB])
+	print "Number of extended pairs {}".format(len(ext_pairs))
+
+	# Caching score of XGB2 prediction
+	results_ext_scores = defaultdict(float)
+	for _ in predict_by_rf(xgb2, test_candidate_sets, False, nn_pairs=ext_pairs):
+		results_ext_scores[(_[0],_[1])] = abs(_[2])
+
+
+	print "Inferencing top {} pairs".format(TOP_PAIRS_NB)
+	r = defaultdict(lambda: -1)
+	cluster = defaultdict(set)
+	for p in XGB1_results[:TOP_PAIRS_NB]:
+		cluster[p[0]] = set([p[0]])
+		cluster[p[1]] = set([p[1]])
+
+	XGB2_ext_pairs = []
+	timer = ProgressBar(title="Extending pairs")
+	for p in XGB1_results[:TOP_PAIRS_NB]:
+		timer.tick()
+		ru = get_root(p[0],r)
+		rv = get_root(p[1],r)
+		if ru!=rv:
+			clusters_pairs = []
+			p_count = 0
+			c_score = 0
 			for u in cluster[ru]:
-				cluster[rv].add(u)
-			r[ru] = rv
+				for v in cluster[rv]:
+					p_count +=1
+					c_score += results_ext_scores[(min(u,v),max(u,v))]
+					clusters_pairs.append((min(u,v),max(u,v)))
+			confidences = float(c_score)/p_count
+			if ((confidences >= 0.3) and (len(cluster[ru]) + len(cluster[rv])<50)) or (len(cluster[ru]) + len(cluster[rv])<=3):
+				XGB2_ext_pairs += clusters_pairs
+				for u in cluster[ru]:
+					cluster[rv].add(u)
+				r[ru] = rv
 
-print "Final results: given {} pairs, extend to {} pairs".format(TOP_PAIRS_NB, len(XGB2_ext_pairs))
-print "new_extended pairs {}".format(len(set(get_top_pair_for_submit(XGB2_ext_pairs+XGB1_results))-set([(p[0],p[1]) for p in XGB1_results[:215307]])))
+	print "Final results: given {} pairs, extend to {} pairs".format(TOP_PAIRS_NB, len(XGB2_ext_pairs))
+	print "new_extended pairs {}".format(len(set(get_top_pair_for_submit(XGB2_ext_pairs+XGB1_results))-set([(p[0],p[1]) for p in XGB1_results[:215307]])))
 
-'''
-Merge XGB2 ext_pairs on top of XGB1 predictions 
-'''
-write_to_file(get_top_pair_for_submit(XGB2_ext_pairs+XGB1_results), 'result_ordered.with-inference.submit.txt')
-
+	# Merge XGB2 ext_pairs on top of XGB1 predictions 
+	write_to_file(get_top_pair_for_submit(XGB2_ext_pairs+XGB1_results), 'result_ordered.with-inference.{}.submit.txt'.format(TOP_PAIRS_NB), False)
