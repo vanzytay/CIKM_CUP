@@ -360,13 +360,16 @@ train_candidate_sets=[
 	,'candidates/candidate_pairs.nn.100.train-98k.user-url-title.word2vec.json.gz'
 ]
 
-nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in train_candidate_sets]
-order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
+# nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in train_candidate_sets]
+# order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
+
+nn_pairs_lst = [filter_order_list(dictFromFileUnicode(train_candidate_sets[0]),18)] + [filter_order_list(dictFromFileUnicode(_),10) for _ in train_candidate_sets[1:]]
+order_objs = [OrderClass(dictFromFileUnicode(_)) for _ in train_candidate_sets]
 
 # Build the train and test data xgb1	
 
 nn_pairs= []
-for ps in nn_pairs_lst[:2]: #!!! skip embedding candidates
+for ps in nn_pairs_lst: #!!! skip embedding candidates
 	nn_pairs += ps
 nn_pairs = filter_nn_pairs(nn_pairs)
 random.shuffle(nn_pairs)
@@ -427,10 +430,11 @@ word_model = None
 timer = ProgressBar(title="Running XG Boost")
 
 samples_train = None
+del order_objs
 
 xgb1 = XGBClassifier(
  learning_rate =0.01,
- n_estimators=3500,
+ n_estimators=4000,
  max_depth=5,
  min_child_weight=1,
  gamma=0,
@@ -511,11 +515,17 @@ def predict_by_rf(rf_model, candidates_sets, strict_mode, nn_pairs=None):
 	global order_objs
 
 	if nn_pairs==None:
-		nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in candidates_sets]
-		order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
+		#nn_pairs_lst = [filter_order_list(dictFromFileUnicode(m),15) for m in candidates_sets]
+		#order_objs = [OrderClass(ps) for ps in nn_pairs_lst]
+		
+		nn_pairs_lst = [filter_order_list(dictFromFileUnicode(candidates_sets[0]),18)] + [filter_order_list(dictFromFileUnicode(_),10) for _ in candidates_sets[1:]]
+		order_objs = [OrderClass(dictFromFileUnicode(_)) for _ in candidates_sets]
+		
 		nn_pairs= []
-		for ps in nn_pairs_lst[:2]: # !!! skip embedding candidates
+		for ps in nn_pairs_lst: # !!! skip embedding candidates
 			nn_pairs += ps
+		
+		
 
 		nn_pairs = filter_nn_pairs(nn_pairs)
 		random.shuffle(nn_pairs)
@@ -600,7 +610,7 @@ print "Given {} pairs, extend to {} pairs ({} positive pairs)".format(TOP_PAIRS_
 
 xgb2 = XGBClassifier(
  learning_rate =0.01,
- n_estimators=3000,
+ n_estimators=4000,
  max_depth=5,
  min_child_weight=1,
  gamma=0,
