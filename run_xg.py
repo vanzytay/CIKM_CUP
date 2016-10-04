@@ -450,6 +450,8 @@ xgb1 = XGBClassifier(
 print("Fitting XGB[1]")
 xgb1.fit(np.array(X),np.array(Y), verbose=True)
 
+del X
+del Y
 # Evaluate xgb1
 
 from sklearn.metrics import precision_score
