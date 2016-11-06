@@ -47,7 +47,7 @@ user_click_times = defaultdict(list)
 
 from datetime import datetime
 timer = ProgressBar(title="Reading facts.json")
-with open('facts.json','r') as f:
+with open('./datasets/facts.json','r') as f:
 	for line in f:
 		timer.tick()
 		js = json.loads(line.strip())
@@ -573,7 +573,7 @@ evaluate_on_test_98k(results[:125000])
 evaluate_on_test_98k(results[:130000])
 evaluate_on_test_98k(results[:210000])
 
-write_to_file(results[:215307], './dev_scores/dev_result_scores.txt', with_scores=True)
+write_to_file(results[:215307], './dev_scores/final_dev_result_scores.txt', with_scores=True)
 
 
 # Extend top 50k pairs
