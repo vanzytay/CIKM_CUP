@@ -13,13 +13,14 @@ should come soon.
 A report/paper was presented. [PDF](https://arxiv.org/pdf/1610.07119.pdf)
 
 If you find this repository useful, please reference:
-
+```latex
 @misc{1610.07119,
 Author = {Yi Tay and Cong-Minh Phan and Tuan-Anh Nguyen Pham},
 Title = {Cross Device Matching for Online Advertising with Neural Feature Ensembles : First Place Solution at CIKM Cup 2016},
 Year = {2016},
 Eprint = {arXiv:1610.07119},
 }
+```
 
 
 
